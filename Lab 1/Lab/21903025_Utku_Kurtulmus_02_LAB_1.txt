@@ -1,0 +1,568 @@
+---------PART3-------------------
+
+
+
+	.text
+	.globl __start
+__start:
+	#this program implements the following exp: x = a^3 - 4b/((ab+b)% a)
+	jal GetInputs
+	
+	#calculate a^3 store it in $t0
+	add $t0, $zero, $a0
+	mul $t0, $a0, $a0
+	mul $t0, $t0, $a0
+	
+	#calculate 4b store in it $t1
+	add $t1, $zero, $a1
+	mul $t1, $t1, 4
+	
+	#calculate ab+b store it in $t2
+	#calculate ab
+	jal Multiply 
+	move $t2,$v0 
+	#calculate ab+b
+	add $t2,$t2,$a1
+	
+	#calculate (ab+b) % a store it in $t2
+	move $a1, $a0 #put a1 a instead of b
+	move $a0, $t2 #out ab+b to a0
+	#calculate ab+b % a
+	jal Mod
+	move $t2, $v0
+	
+	bne $t2, $zero, continueee
+	li $v0, 4
+	la $a0, errorPrompt
+	syscall
+	jal end
+	continueee:
+	
+	#now calculate $t0 - $t1/$t2
+	#calculate $t1/$t2 store it in $t1
+	move $a0, $t1
+	move $a1, $t2
+	jal Divide
+	move $t1, $v0
+	
+	#now calculate $t0 - $t1, store it in $v0
+	move $a0,$t0
+	move $a1,$t1
+	jal Subtraction
+	
+	#print the result
+	jal PrintResult
+	jal end
+	
+#functions-------------------------------------
+
+GetInputs:
+	#get the inputs a,b,c from the user and store them at $a0, $a1, $a2 registers
+	li $v0, 4
+	la $a0, prompt
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	la $a0, askForA
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	li $v0, 5 #get A
+	syscall 
+	
+	move $t0, $v0 #store A
+	
+	li $v0, 4
+	la $a0, endl
+	syscall
+	
+	la $a0, askForB
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	li $v0, 5 #get B
+	syscall 
+	
+	move $t1, $v0 #store B
+	
+	li $v0, 4 
+	la $a0, endl
+	syscall
+	
+	la $a0, askForC
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	li $v0, 5 #get C
+	syscall 
+	
+	move $t2, $v0 #store C
+	
+	move $a0, $t0
+	move $a1, $t1
+	move $a2, $t2
+	
+	#go to next instruction
+	jr $ra
+
+
+PrintResult: 
+	#Print the value in $v0
+	move $t0, $v0
+	
+	#print line
+	li $v0 4
+	la $a0, endl
+	syscall
+	
+	#print result prompt
+	la $a0, resultPrompt
+	syscall
+	
+	#print the result
+	move $a0, $t0
+	li $v0, 1
+	syscall
+	
+	#go to next instruction
+	jr $ra
+
+Addition:
+	#add $a0, $a1, store the result in $v0
+	add $v0, $a0, $a1
+	#go to next instruction
+	jr $ra
+		
+Subtraction:
+	#add subtract $a0 - $a1, store the result in $v0
+	sub $v0, $a0, $a1
+	#go to next instruction
+	jr $ra
+	
+Multiply: 
+	#multiply $a0 and $a1, store the result in $v0
+	mult $a0, $a1
+	mflo $v0
+	#go to next instruction
+	jr $ra
+
+Divide: 
+	#divide $a0/$a1, store the result in $v0
+	div $a0,$a1
+	mflo $v0
+	#go to next instruction
+	jr $ra
+	
+Mod:	
+	#$a0 mod $a1
+	div $a0,$a1
+	mfhi $v0
+	#go to next instruction
+	jr $ra 
+end:
+	li $v0, 10
+	syscall
+	
+	.data
+	result: .space 4
+	prompt: .asciiz "Welcome to simple arithmetic calculator, this program calculates the following expression: x = a^3 - 4b/((ab+b)% a)"
+	askForA: .asciiz "please enter the a"
+	askForB: .asciiz "please enter the b"
+	askForC: .asciiz "please enter the c"
+	resultPrompt: .asciiz "The result: "
+	errorPrompt: .asciiz "ERROR, you can't divide to 0."
+	endl: .asciiz "\n"
+
+---------------------------Part4----------------------------------------
+
+
+	.text
+	.globl __start
+	
+__start:
+	li $v0, 4
+	la $a0, welcomePrompt
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	jal getSize
+	jal getElements
+	
+	simpleMenu:
+		li $v0, 4
+		la $a0, endl
+		syscall
+		syscall
+		
+		la $a0, chooseOperation
+		syscall
+		
+		la $a0, promptA
+		syscall
+		
+		la $a0, promptB
+		syscall
+		
+		la $a0, promptC
+		syscall
+		
+		la $a0, promptD
+		syscall
+		
+		la $a0, endl
+		syscall
+		
+		li $v0, 5
+		syscall
+		
+		beq $v0, 1, opA
+		beq $v0, 2, opB
+		beq $v0, 3, opC
+		beq $v0, 4, opD
+		
+		opA:
+			jal FunctionA
+			j simpleMenu
+		opB:
+			jal FunctionB
+			j simpleMenu
+		opC:
+			jal FunctionC
+			j simpleMenu
+		opD:
+			jal end
+			j simpleMenu
+		
+#-----------------------Functions-----------------------------------
+
+	#Get the size of the array
+	getSize:
+		#print line
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#print the askSize prompt for the user
+		li $v0,4
+		la $a0, askTheSize
+		syscall
+		
+		#print line
+		la $a0, endl
+		syscall
+		
+		#get the size input from the user
+		li $v0,5 #the input will be stored in the v0 register
+		syscall
+		
+		#check whether the input is valid or not, if the input is not valid go back to getSize
+		bgt $v0, 100, getSize 
+		blt $v0, 0, getSize
+		
+		#store the size in the allocated memory for the size
+		sw $v0, arraySize
+		
+		#go the next inst
+		jr $ra
+
+	#---------------------------------------------------------------------------
+	
+	#Initilaze the array by getting the inputs from the user
+	getElements:
+		#get the address of the array, and size of the array
+		la $t0,array
+		la $t1, arraySize
+		lw $t1, 0($t1)  #get the size to $t1 register
+		
+		loop:
+			#print line
+			li $v0, 4
+			la $a0, endl
+			syscall
+		
+			#check whether there is a remaining element
+			ble $t1, $zero, exitt
+	
+			#print the prompt for the next element
+			li $v0, 4
+			la $a0, askTheElement
+			syscall
+		
+			#print line
+			la $a0, endl
+			syscall
+		
+			#get the element from the user
+			li $v0, 5
+			syscall
+		
+			#store the element in the array
+			sw $v0, 0($t0)
+		
+			#increment index
+			addi $t0, $t0, 4
+			
+			#decrement the remaing elements
+			addi $t1, $t1, -1
+		
+			#go back to the beginning
+			j loop
+		
+			exitt:	
+				#go the next inst
+				jr $ra		
+	#---------------------------------------------------------------------------
+	
+	FunctionA:
+		#Find summation of numbers stored in the array which is less than an input number.
+		#print line
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#print the prompt for the input
+		li $v0, 4
+		la $a0, askTheInput
+		syscall
+		
+		#store the input in $t0
+		li $v0, 5
+		syscall
+		move $t0, $v0
+		
+		
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		
+		#get the array size and array address
+		la $t1,array
+		la $t2, arraySize
+		lw $t2, 0($t2)  #get the size to $t2 register
+		
+		#prepare the $t4 register for sumation
+		add $t4, $zero, $zero
+		
+		sum:
+			#check whether there is a remaining element
+			ble $t2, $zero, finishA
+			
+			#get the next element to $t3
+			lw $t3, 0($t1)
+			
+			#increment the index
+			addi $t1, $t1, 4
+			#decrement size
+			addi $t2, $t2, -1
+			
+			#if the element less than the input addit to the summation
+			bge $t3,$t0,sum 
+			add $t4, $t4, $t3
+			
+			#jump to the beginning
+			j sum
+		finishA:
+			#report the sum
+			li $v0, 1
+			move $a0, $t4
+			syscall
+			
+			#go the next instruction
+			jr $ra
+	#---------------------------------------------------------------------------
+	
+	FunctionB:
+		#Find the numbers of even and odd numbers and display them
+		#print line
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#get the array size and array address
+		la $t0,array
+		la $t1, arraySize
+		lw $t1, 0($t1)  #get the size to $t1 register
+		
+		#prepare the $t2 register for even numbers
+		add $t2, $zero, $zero
+
+		#prepare the $t3 register for odd numbers
+		add $t3, $zero, $zero	
+		
+		#prepare the $t7 register for even/odd checking
+		addi $t7, $zero, 2
+			
+		find:
+			#check whether there is a remaining element
+			ble $t1, $zero, finishB
+			
+			#get the next element to $t4
+			lw $t4, 0($t0)
+			
+			#increment the index
+			addi $t0, $t0, 4
+			#decrement size
+			addi $t1, $t1, -1
+			
+			#check whether the element is even or odd
+			div $t4, $t7
+			mfhi $t5  
+			beq $t5, 1, odd
+			
+			even:
+				#increment number of even items
+				addi $t2, $t2, 1
+				
+				#jump to the beginning
+				j find
+			odd:
+				#increment number of odd items
+				addi $t3, $t3, 1
+				#jump to the beginning
+				j find
+		finishB:
+			#report the number of even items
+			li $v0, 4
+			la $a0, endl
+			syscall
+			
+			la $a0, promptEven
+			syscall
+			
+			li $v0, 1
+			move $a0, $t2
+			syscall
+			
+			#report the number of odd items
+			li $v0, 4
+			la $a0, endl
+			syscall
+			
+			la $a0, promptOdd
+			syscall
+			
+			li $v0, 1
+			move $a0, $t3
+			syscall
+			
+			#go the next instruction
+			jr $ra	
+			
+			
+	#---------------------------------------------------------------------------
+	
+	FunctionC:
+		#Display the number of occurrences of the array elements NOT divisible by a certain input number.
+		#print line
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#get the array size and array address
+		la $t0,array
+		la $t1, arraySize
+		lw $t1, 0($t1)  #get the size to $t1 register
+		
+		#get the input
+		#print the prompt for the input
+		li $v0, 4
+		la $a0, askTheInput
+		syscall
+	
+		#store the input in $t2
+		li $v0, 5
+		syscall
+		move $t2, $v0
+		
+		#if input equals to 0 print error message
+		bne $t2,$zero continueee
+		li $v0,4
+		la $a0, errorPrompt
+		syscall
+		li $v0,10
+		syscall
+		
+		continueee:
+		li $v0,4
+		la $a0, endl
+		syscall
+		
+		#prepare the $t3 register for the number of elements
+		add $t3, $zero, $zero
+		
+		findNotDivisible:
+			#check whether there is a remaining element
+			ble $t1, $zero, finishC
+			
+			#get the next element to $t4
+			lw $t4, ($t0)
+			
+			#increment the index
+			addi $t0, $t0, 4
+			#decrement size
+			addi $t1, $t1, -1
+			
+			#check whether the element is divisibly by the input, if it is NOT divisible increment the number of elements
+			div $t4, $t2
+			mfhi $t5  
+			beq $t5, 0, findNotDivisible
+			
+			#increment the number of elements
+			addi $t3, $t3, 1
+			j findNotDivisible			
+			
+		finishC:
+			#report the number of not divisible items
+			li $v0, 4
+			la $a0, endl
+			syscall
+			
+			la $a0, promptNotDivisible
+			syscall
+			
+			li $v0, 1
+			move $a0, $t3
+			syscall
+			
+			li $v0, 4
+			la $a0, endl
+			syscall
+			
+			#go the next instruction
+			jr $ra	
+			
+	#---------------------------------------------------------------------------
+	end:
+		li $v0, 10
+		syscall
+	
+
+	.data
+array: .space 400
+arraySize: .space 4
+welcomePrompt: .asciiz " Welcome to the program!"
+chooseOperation: .asciiz "Please enter the number of the operation you want to be executed \n"
+promptA: .asciiz "1. Find summation of numbers stored in the array which is less than an input number. \n" 
+promptB: .asciiz "2. Find the numbers of even and odd numbers and display them. \n"
+promptC: .asciiz "3. Display the number of occurrences of the array elements NOT divisible by a certain input number. \n"
+promptD: .asciiz "4. Quit \n"
+promptEven: .asciiz "number of even elements: "
+promptOdd: .asciiz "number of odd elements: "
+promptNotDivisible: .asciiz "total number of the elements not divisible by the given input value is equal to : "
+askTheInput: .asciiz "Please enter the input number \n"
+askTheSize: .asciiz "Enter the size of the array, The size must be between 0 and 100 inclusive."
+askTheElement: .asciiz "Enter the next element "
+errorPrompt: .asciiz "ERROR, you can't divide to 0."
+endl: .asciiz "\n"
+	

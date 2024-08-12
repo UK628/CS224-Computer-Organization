@@ -1,0 +1,655 @@
+CS224
+Lab 2
+Section 2
+Utku Kurtulmus
+21903025
+27.02.2022
+
+#Otherwise stated input values assumed correct as mentioned in Lab assignment. (i.e, input for array size is not less than 0)
+# " 4. In all labs if you are not told, you may assume that inputs are correct. "
+# "When the array size is zero, the sumation of the elements assumed 0, and it is palindrome by definiton. 
+# "If the user wants to find min or max value in an array with size 0, the program will print error prompt but will assume the min and max is 0" 
+
+-------------Part1(Circular Shifts)----------------------
+	.text
+	.globl main
+	
+main:
+	
+	#Print the welcome prompt
+	la $a0, welcomePrompt
+	li $v0, 4
+	syscall
+	
+	la $a0, endl
+	syscall
+
+	menu:
+		#Print the menu
+		li $v0, 4
+		la $a0, op1
+		syscall
+		
+		la $a0, op2
+		syscall
+		
+		la $a0, op3
+		syscall
+		
+		la $a0, endl
+		syscall		
+		
+		#Ask the user which operation which operation is wanted to be executed
+	  	la $a0, choose
+		syscall
+	  	
+		li $v0, 5 #the operation value stored in v0
+		syscall
+		
+		beq $v0, 3 exit #check if the operation is exit, else continue and get the value and shamt
+		move $s0, $v0 #move the operation value to s0
+		
+		#get the decimal input value from the user
+		li $v0, 4
+		la $a0, endl
+		syscall	
+		
+		la $a0,askTheInput
+		syscall
+		
+		#read input
+		li $v0, 5 #the input value stored in v0
+		syscall
+		move $s1 , $v0 #move the input value to s1
+		
+		#get the shift amount value from the user, and store it in $a1
+		li $v0, 4
+		la $a0, askShamt
+		syscall	
+		
+		li $v0, 5 
+		syscall
+		move $a1, $v0 
+		move $a0, $s1 #store the input value in $a0 for the functioncall
+		
+		#execute the wanted operation
+		beq $s0, 2, SRC
+	
+		SLC:
+			jal shiftLeftCircular
+			move $s0, $v0 #$s0 shifted value 
+			move $s1, $a0 #$s1 input value, $a1 shamt
+			
+			li $v0, 4
+			la $a0, pr1
+			syscall 
+			
+			li $v0, 34
+			move $a0, $s1
+			syscall
+			
+			li $v0, 4
+			la $a0, pr2
+			syscall 
+			
+			li $v0, 1
+			move $a0, $a1
+			syscall
+			
+			li $v0, 4
+			la $a0, toLeft
+			syscall 
+			
+			li $v0, 4
+			la $a0, final
+			syscall 
+			
+			li $v0, 34
+			move $a0, $s0
+			syscall
+			
+			li $v0, 4
+			la $a0, endl
+			syscall 
+			
+			j menu
+		SRC:
+			jal shiftRightCircular
+			move $s0, $v0 #$s0 shifted value 
+			move $s1, $a0 #$s1 input value, $a1 shamt
+			
+			li $v0, 4
+			la $a0, pr1
+			syscall 
+			
+			li $v0, 34
+			move $a0, $s1
+			syscall
+			
+			li $v0, 4
+			la $a0, pr2
+			syscall 
+			
+			li $v0, 1
+			move $a0, $a1
+			syscall
+			
+			li $v0, 4
+			la $a0, toRight
+			syscall 
+			
+			li $v0, 4
+			la $a0, final
+			syscall 
+			
+			li $v0, 34
+			move $a0, $s0
+			syscall
+			
+			li $v0, 4
+			la $a0, endl
+			syscall 
+			
+			j menu
+		exit:
+			#print goodbye message
+			jal quit
+	
+	
+#---------------------FUNCTIONS(SUBPROGRAMS)---------------------------------
+
+shiftLeftCircular: #$a0 the value, $a1,the shift amount, $v0 new value
+	
+	#save s registers to stack
+	addi $sp, $sp, -12 #allocate 3 word memory in stack
+	sw $s0, 8($sp)
+	sw $s1	4($sp)
+	sw $s2	0($sp)
+	
+	#operations	
+	sub $s0, $a1, 32 #s0 = $a1 - 32
+	mul $s0, $s0, -1 #s0 = 32 - a1, shift right amount
+	sllv  $s1, $a0, $a1 
+	srlv $s2, $a0, $s0
+	add $v0, $s1, $s2
+
+	#free the memory and set the s registers to their old values
+	lw $s2, 0($sp)
+	lw $s1, 4($sp)
+	lw $s0, 8($sp)
+	addi $sp, $sp, 12 #free the memory
+	
+	#go to next instruction
+	jr $ra
+
+
+shiftRightCircular: #$a0 the value, $a1,the shift amount, $v0 new value
+	
+	
+	#save s registers to stack
+	addi $sp, $sp, -12 #allocate 3 word memory in stack
+	sw $s0, 8($sp)
+	sw $s1	4($sp)
+	sw $s2	0($sp)
+	
+	#operations	
+	sub $s0, $a1, 32 #s0 = $a1 - 32
+	mul $s0, $s0, -1 #s0 = 32 - a1, shift left amount
+	srlv  $s1, $a0, $a1 
+	sllv $s2, $a0, $s0
+	add $v0, $s1, $s2
+
+	#free the memory and set the s registers to their old values
+	lw $s2, 0($sp)
+	lw $s1, 4($sp)
+	lw $s0, 8($sp)
+	addi $sp, $sp, 12 #free the memory
+	
+	#go to next instruction
+	jr $ra
+	
+quit: 
+	li $v0, 10
+	syscall	
+	
+	
+	.data,
+welcomePrompt: .asciiz "Welcome to the SHIFT CIRCULAR v1.0\n"
+goodBye: .asciiz "Bye Bye...."
+op1: .asciiz "1. Shift Left Circular \n"
+op2: .asciiz "2. Shift Right Circular \n"
+op3: .asciiz "3. Quit \n"
+choose: .asciiz "Please enter the number of the operation you want to be executed: \n"
+askTheInput: .asciiz "Please enter the value to be shifted:\n"
+askShamt: .asciiz "Please enter the shift amount:\n"
+pr1: .asciiz "The input value: "
+pr2: .asciiz ", the shift amount: "
+toRight: .asciiz " to right "
+toLeft: .asciiz " to left "
+final: .asciiz " ===> "
+endl: .asciiz "\n"
+
+-------------Part2(ArrayProcessing)----------------------
+	.text
+	.globl main
+main:
+	
+	#print welcome prompt
+	li $v0,4
+	la $a0, welcomePrompt
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	#create array
+	jal createArray
+	
+	#store the address and size in s registers
+	move $s0, $v0 #array beginnig address
+	move $s1, $v1 #arraysize
+	
+	li $v0,4
+	la $a0, endl
+	syscall
+	
+	#move the input arguments to $a0 and $a1 for the arrayOperation function
+	move $a0, $s0
+	move $a1, $s1
+		
+	#array operations
+	jal arrayOperations
+
+
+#----------------Functions(SubPrograms)------------------------------------
+createArray: #creates array by getting inputs from the user and returns array adress in $v0 and size in $v1
+	
+	#store the s registers values to stack
+	addi $sp, $sp, -12 #allocate 3 word memory in stack
+	sw $s0, 8($sp)
+	sw $s1,	4($sp)
+	sw $s2,	0($sp)
+	
+	#get the array size
+	li $v0,4
+	la $a0, askSize
+	syscall
+	
+	li $v0, 5
+	syscall
+	
+	move $v1, $v0
+	#create the array
+	move $a0, $v1
+	mul $a0, $a0,4
+	li $v0, 9
+	syscall  #allocate the necassary amount of memory in heap
+	
+	#now initilaze the array we have correct return values in $v0, $v1 but array is not initilazed
+	move $s0, $v1 #get the size to $s0
+	move $s1, $v0 #get the array beginning address to s1, s1 will be index pointer
+	move $s2, $v0 #get the array beginning address to s2, since we will use v0 in our program will need to store the value in v0 and restore it
+	
+	while1:
+		beq $s0, $zero, done1
+		
+		#print ask element prompt
+		la $a0, askElement
+		li $v0,4
+		syscall
+		
+		#get the next element
+		li $v0,5
+		syscall
+		
+		#store the next element in the allocated memory
+		sw $v0, 0($s1)
+		
+		#increment the index
+		addi $s1, $s1,4
+		
+		addi $s0,$s0,-1
+		j while1
+		
+	done1:
+		move $v0, $s2
+		
+	#get back the s registers values from the stack
+	lw $s2, 0($sp)
+	lw $s1, 4($sp)
+	lw $s0, 8($sp)
+	addi $sp, $sp, 12 #free the memory
+	
+	#go to next instruction
+	jr $ra
+#==================================================================================================
+arrayOperations: #$a0 array adress, $a1,arraysize
+	
+	#store the s registers values to stack
+	addi $sp, $sp, -16 #allocate 3 word memory in stack
+	sw $s0, 12($sp)
+	sw $s1,	8($sp)
+	sw $s2,	4($sp)
+	sw $s3, 0($sp)
+	
+	#store the array adress and size in s1 and s2 register, #$s0 for operation input
+	move $s1, $a0
+	move $s2, $a1
+	
+	menu:
+		#print the menu
+		li $v0, 4
+		la $a0, op1
+		syscall
+		
+		la $a0, op2
+		syscall
+		
+		la $a0, op3
+		syscall
+		
+		la $a0, op4
+		syscall
+
+		la $a0, op5
+		syscall
+		
+		la $a0, choose
+		syscall
+		
+		#get the operation input from the user
+		li $v0, 5
+		syscall
+		
+		#store the operation input in s0
+		move $s0, $v0
+		#check the operation
+		beq $s0, 2, opMax
+		beq $s0, 3, opSum
+		beq $s0, 4, opPal
+		beq $s0, 5, opExt
+		
+		opMin:
+			move $a0, $s1
+			move $a1, $s2
+			jal min
+			move $s3, $v0 #move the return value to $s3
+			
+			#print the minimum value
+			li $v0, 4
+			la $a0, theMin
+			syscall
+			
+			li $v0, 1
+			move $a0, $s3 
+			syscall
+			
+			li $v0, 4
+			la $a0, endl
+			syscall
+			
+			j menu
+		opMax:
+			move $a0, $s1
+			move $a1, $s2
+			jal max
+			
+			move $s3, $v0 #move the return value to $s3
+			
+			#print the minimum value
+			li $v0, 4
+			la $a0, theMax
+			syscall
+			
+			li $v0, 1
+			move $a0, $s3 
+			syscall
+			
+			li $v0, 4
+			la $a0, endl
+			syscall
+			
+			j menu
+		opSum:
+			move $a0, $s1
+			move $a1, $s2
+			jal sum
+			
+			move $s3, $v0 #move the return value to $s3
+			
+			#print the minimum value
+			li $v0, 4
+			la $a0, theSum
+			syscall
+			
+			li $v0, 1
+			move $a0, $s3 
+			syscall
+			
+			li $v0, 4
+			la $a0, endl
+			syscall
+		
+			j menu
+		opPal:
+			move $a0, $s1
+			move $a1, $s2
+			jal palindrome
+			
+			move $s3, $v0 #move the return value to $s3
+			beq $s3, $zero, false
+			
+			true:
+				li $v0, 4
+				la $a0, yesPal
+				syscall
+			
+				la $a0, endl
+				syscall
+				j menu
+			
+			false:
+				li $v0, 4
+				la $a0, noPal
+				syscall
+			
+				la $a0, endl
+				syscall
+				j menu
+		opExt:
+			#get back the s registers values from the stack
+			lw $s3, 0($sp)
+			lw $s2, 4($sp)
+			lw $s1, 8($sp)
+			lw $s0, 12($sp)
+			addi $sp, $sp, 16 #free the memory
+			jal exit
+
+	#go to next instruction
+	jr $ra
+#==================================================================================================
+min: #$a0 array adress, $a1,arraysize, It will corrupt the $a0 and $a1. The function will return the minimum value of the array in $v0
+	
+	#check if the size 0
+	beq $a1, $zero, noElement
+	
+	#store the s registers values to stack
+	addi $sp, $sp, -8 #allocate 2 word memory in stack
+	sw $s0, 4($sp)
+	sw $s1,	0($sp)
+
+	lw $s0, 0($a0) #s0 the min value
+	addi $a0, $a0, 4 #update the index
+	
+	while2:
+		beq $a1, 1, done2
+		lw $s1, 0($a0) #get the next element into $s1
+		bgt $s1, $s0 , notUpdate  #check if the next element smaller than current min value
+		move $s0, $s1 #update the new min value 
+		notUpdate:
+			addi $a0, $a0, 4 #update the index
+			addi $a1, $a1, -1
+			j while2	
+	done2:
+		move $v0, $s0
+
+	#get back the s registers values from the stack
+	lw $s1, 0($sp)
+	lw $s0, 4($sp)
+	addi $sp, $sp, 8 #free the memory
+
+	#go to next instruction
+	jr $ra
+	
+	noElement:
+		li $v0,4
+		la $a0, error
+		syscall
+		li $v0,0
+		jr $ra
+	
+#==================================================================================================
+max:	#$a0 array adress, $a1,arraysize, It will corrupt the $a0 and $a1. The function will return the maximum value oft the array in $v0
+	
+	#check if the size 0
+	beq $a1, $zero, noElement2
+	
+	#store the s registers values to stack
+	addi $sp, $sp, -8 #allocate 2 word memory in stack
+	sw $s0, 4($sp)
+	sw $s1,	0($sp)
+
+	lw $s0, 0($a0) #s0 the max value
+	addi $a0, $a0, 4 #update the index
+	
+	while3:
+		beq $a1, 1, done3
+		lw $s1, 0($a0) #get the next element into $s1
+		blt $s1, $s0 , notUpdate2  #check if the next element greater than current max value
+		move $s0, $s1 #update the new max value 
+		notUpdate2:
+			addi $a0, $a0, 4 #update the index
+			addi $a1, $a1, -1
+			j while3	
+	done3:
+		move $v0, $s0
+
+	#get back the s registers values from the stack
+	lw $s1, 0($sp)
+	lw $s0, 4($sp)
+	addi $sp, $sp, 8 #free the memory
+
+	#go to next instruction
+	jr $ra
+	
+	noElement2:
+		li $v0,4
+		la $a0, error
+		syscall
+		li $v0,0
+		jr $ra
+#==================================================================================================
+sum:	#$a0 array adress, $a1,arraysize, It will corrupt the $a0 and $a1. The function will return the sum of the elements in $v0
+	#store the s registers values to stack
+	addi $sp, $sp, -8 #allocate 2 word memory in stack
+	sw $s0, 4($sp)
+	sw $s1,	0($sp)
+
+	add $s0, $zero, $zero #s0 sum = 0, initially
+	
+	while4:
+		beq $a1, 0, done4
+		lw $s1, 0($a0) #get the next element into $s1
+		add $s0, $s0, $s1 #add the next element into the sumation
+		
+		addi $a0, $a0, 4 #update the index
+		addi $a1, $a1, -1
+		j while4	
+	done4:
+		move $v0, $s0
+
+	#get back the s registers values from the stack
+	lw $s1, 0($sp)
+	lw $s0, 4($sp)
+	addi $sp, $sp, 8 #free the memory
+
+	#go to next instruction
+	jr $ra
+#==================================================================================================
+palindrome: #$a0 array adress, $a1,arraysize, It will corrupt the $a0 and $a1. If the array is palindrome it will return 1 else 0 in $v0
+	
+	#store the s registers values to stack
+	addi $sp, $sp, -16 #allocate 4 word memory in stack
+	sw $s0, 12($sp)
+	sw $s1,	8($sp)
+	sw $s2,	4($sp)
+	sw $s3, 0($sp)
+	
+	sub $s0, $a1, 1
+	mul $s0, $s0, 4
+	add $s0, $s0, $a0 #$s0 points to the end of the array
+	addi $v0, $zero, 1 #for now we'll assume that array is palindrome, if we find it is not we'll update it to 0
+	
+	while5:
+		sub $s3, $s0, $a0
+		ble $s3, $zero, done5
+		
+		lw $s1, 0($a0) #get the first element into $s1
+		lw $s2, 0($s0) #get the second elemenet into $s2
+		
+		addi $a0,$a0,4 #update pointers
+		addi $s0,$s0,-4
+		
+		beq $s1, $s2, while5
+		add $v0, $zero, $zero #the array is not a palindrome
+		
+		#get back the s registers values from the stack
+		lw $s3, 0($sp)
+		lw $s2, 4($sp)
+		lw $s1, 8($sp)
+		lw $s0, 12($sp)
+		addi $sp, $sp, 16 #free the memory
+		
+		#go to next instruction
+		jr $ra
+		
+	done5: #array is a palindrome
+		#get back the s registers values from the stack
+		lw $s3, 0($sp)
+		lw $s2, 4($sp)
+		lw $s1, 8($sp)
+		lw $s0, 12($sp)
+		addi $sp, $sp, 16 #free the memory
+	
+		#go to next instruction
+		jr $ra
+	
+#==================================================================================================
+exit:
+	li $v0,4
+	la $a0, goodBye
+	syscall
+	
+	li $v0,10
+	syscall
+
+	.data
+welcomePrompt: .asciiz "Welcome to the arrayProcessing v1.0!\n"
+goodBye: .asciiz "Bye Bye...."
+askSize: .asciiz "Please enter the array size \n"
+choose: .asciiz "Please enter the number of the operation you wanted to be executed \n"
+op1: .asciiz "1. Find the minimum value in the array \n"
+op2: .asciiz "2. Find the maximum value in the array \n"
+op3: .asciiz "3. Find the sumation of the array elements \n"
+op4: .asciiz "4. Check if the array is a palindrome \n"
+op5: .asciiz "5. Exit \n"
+askElement: .asciiz "Please enter the next element\n"
+theMin: .asciiz "The minimum value is : "
+theMax: .asciiz "The maximum value is : "
+theSum: .asciiz "The sum of the all elements in the array : "
+yesPal: .asciiz "palindrome \n"
+noPal: .asciiz "not palindrome \n"
+error: .asciiz "There is no elemene in the array!!!!, I will assume 0 for you, do not worry.\n"
+endl: .asciiz "\n"
+
+

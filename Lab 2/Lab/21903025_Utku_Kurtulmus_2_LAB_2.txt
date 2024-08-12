@@ -1,0 +1,277 @@
+CS224
+Lab 2
+Sec 2
+Utku Kurtulmus
+21903025
+9.03.2022
+
+	.text
+	.globl main
+main:
+	jal createArray
+	#move array address and size to argument registers
+	move $a0, $v0
+	move $a1, $v1
+	jal bubbleSort
+	
+	li $v0,10
+	syscall
+
+
+#===========================Subprograms(Functions)==================================
+
+createArray: #creates array by getting inputs from the user and returns array adress in $v0 and size in $v1
+	
+	#store the s registers values to stack
+	addi $sp, $sp, -12 #allocate 3 word memory in stack
+	sw $s0, 8($sp)
+	sw $s1,	4($sp)
+	sw $s2,	0($sp)
+	
+	#get the array size
+	li $v0,4
+	la $a0, askSize
+	syscall
+	
+	li $v0, 5
+	syscall
+	
+	move $v1, $v0
+	#create the array
+	move $a0, $v1
+	mul $a0, $a0,4
+	li $v0, 9
+	syscall  #allocate the necassary amount of memory in heap
+	
+	#now initilaze the array we have correct return values in $v0, $v1 but array is not initilazed
+	move $s0, $v1 #get the size to $s0
+	move $s1, $v0 #get the array beginning address to s1, s1 will be index pointer
+	move $s2, $v0 #get the array beginning address to s2, since we will use v0 in our program will need to store the value in v0 and restore it
+	
+	while1:
+		beq $s0, $zero, done1
+		
+		#print ask element prompt
+		la $a0, askElement
+		li $v0,4
+		syscall
+		
+		#get the next element
+		li $v0,5
+		syscall
+		
+		#store the next element in the allocated memory
+		sw $v0, 0($s1)
+		
+		#increment the index
+		addi $s1, $s1,4
+		
+		addi $s0,$s0,-1
+		j while1
+		
+	done1:
+		move $v0, $s2
+		
+	#get back the s registers values from the stack
+	lw $s2, 0($sp)
+	lw $s1, 4($sp)
+	lw $s0, 8($sp)
+	addi $sp, $sp, 12 #free the memory
+	
+	#go to next instruction
+	jr $ra
+
+#$a0 array beginning address $a1 arraysize
+bubbleSort:
+	
+	#save s registers to stack
+	addi $sp, $sp, -28 #allocate 7 word memory in stack
+	sw $s0, 24($sp)
+	sw $s1,	20($sp)
+	sw $s2,	16($sp)
+	sw $s3,	12($sp)
+	sw $s4,	8($sp)
+	sw $s5,	4($sp)
+	sw $s6, 0($sp)
+	
+	#store return address in $s6
+	move $s6, $ra
+	
+	#first get the array beginning address and arraysize to s registers
+	move $s0, $a0 #s0 array pointer
+ 	move $s1, $a1 #s1 array size
+	add $s2, $zero, $zero #s2 is a bool variable sorted, 
+			      #if s2 is 0, array's unsorted , it if it is 1, array's sorted.
+	
+			      
+	for1:
+		bne $s2, $zero, done  #if array is sorted exit the loop
+		beq $s1, $zero, done  #if you have done all the traversals exit the loop
+		
+		addi $s2, $zero, 1 #make the sorted true
+		move $s5, $s1 #s5 array size for another traversal
+		
+		for2:
+			beq $s5, 1, done2
+			
+			#get next two pairs of data and compare them
+			lw $s3, 0($s0)
+			lw $s4, 4($s0)
+		
+			bgt $s3, $s4, swap
+		
+			#update pointer 
+			addi $s0, $s0, 4
+			#update size
+			addi $s5, $s5, -1
+		
+			j for2
+		
+			swap:
+				sw $s3, 4($s0)
+				sw $s4, 0($s0)
+				add $s2, $zero, $zero
+			
+				#update pointer 
+				addi $s0, $s0, 4
+				#update size
+				addi $s5, $s5, -1
+				
+				j for2
+				
+		done2:
+			#update s1
+			addi $s1, $s1, -1
+			#update pointer
+			move $s0, $a0 #s0 array pointer
+			j for1	
+	
+	done:
+		jal processSortedArray
+		move $ra, $s6 #get back the return address
+		
+		#get s registers values from the stack
+		lw $s6, 0($sp)
+		lw $s5, 4($sp)
+		lw $s4, 8($sp)
+		lw $s3, 12($sp)
+		lw $s2, 16($sp)
+		lw $s1, 20($sp)
+		lw $s0, 24($sp)
+		addi $sp, $sp, 28 #free the memory
+		
+		#go to next instruction
+		jr $ra
+#==========================================================================================================	
+#$a0 array beginning address $a1 arraysize		
+processSortedArray:
+	
+	#save s registers
+	addi $sp, $sp, -16 #allocate 4 word memory in stack
+	sw $s0, 12($sp)
+	sw $s1,	8($sp)
+	sw $s2,	4($sp)
+	sw $s3,	0($sp)
+	
+	#get the inputs to s registers
+	move $s0, $a0 #s0 array pointer
+ 	move $s1, $a1 #s1 array size
+ 	
+	addi $s2, $zero, 0 #index number
+	#store the return address
+	move $s3, $ra
+	
+	print:
+		beq $s1, $zero done3
+		#print index number
+		li $v0, 1
+		move $a0, $s2
+		syscall
+		
+		li $v0, 4
+		la $a0, space
+		syscall
+		
+		#print the value
+		lw $a0, 0($s0)
+		li $v0, 1
+		syscall
+		
+		li $v0, 4
+		la $a0, space
+		syscall
+		
+		#callculate sum of the digits
+		lw $a2, 0($s0)
+		jal sumDigits
+		
+		#print sum of the digits
+		move $a0, $v0
+		li $v0, 1
+		syscall
+		
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#update the pointer, size and index number
+		addi $s2, $s2, 1
+		addi $s0, $s0, 4
+		addi $s1, $s1, -1
+		
+		j print
+	done3:
+		#get back the return address
+		move $ra, $s3
+		
+		#get back the s register values
+		lw $s3, 0($sp)
+		lw $s2, 4($sp)
+		lw $s1, 8($sp)
+		lw $s0, 12($sp)
+		addi $sp, $sp, 16 #free the memory
+		
+		#go to next instruction
+		jr $ra
+#==========================================================================================================
+#$a2 value, $v0 sum of digits 
+sumDigits: 
+		#store s registers
+		addi $sp, $sp, -12
+		sw $s0, 8($sp)
+		sw $s1,	4($sp)
+		sw $s2,	0($sp)
+		
+		li $v0, 0
+		
+		#get $a2 to #s0
+		move $s0, $a2
+		
+		#prepare $s2 for division
+		li $s2, 10
+		sumDig:
+			beq $s0, $zero, finish
+			div $s0,$s2
+			mfhi $s1
+			mflo $s0
+			add $v0, $v0, $s1
+			j sumDig
+		
+		finish:
+		#check if the result negative
+		bge $v0, $zero,jumpp  
+		mul $v0, $v0, -1
+		jumpp:
+		
+		#get back s registers value
+		lw $s2,	0($sp)
+		lw $s1, 4($sp)
+		lw $s0, 8($sp)
+		addi $sp, $sp, 8 #free the memory
+		#go to next instruction
+		jr $ra
+	.data
+askSize: .asciiz "Please enter the array size \n"
+askElement: .asciiz "Please enter the next element\n"
+space: .asciiz "    "
+endl: .asciiz "\n"

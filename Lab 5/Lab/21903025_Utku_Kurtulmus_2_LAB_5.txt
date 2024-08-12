@@ -1,0 +1,1146 @@
+CS224
+Lab 5
+Section 2
+Utku Kurtulmuş
+21903025
+
+
+//for tb
+module tb_pipelinedMips();
+
+
+              logic        clk, reset;
+              logic[31:0]  instrF;
+              logic[31:0] PC, PCF;
+              logic PcSrcD;
+              logic MemWriteD, MemtoRegD, ALUSrcD, BranchD, RegDstD, RegWriteD,SrracD;
+              logic [2:0]  alucontrol;
+              logic [31:0] instrD; 
+              logic [31:0] ALUOutE, WriteDataE;
+              logic [1:0] ForwardAE, ForwardBE,ForwardCE;
+              logic ForwardAD, ForwardBD;
+              logic [31:0] ResultW;
+              logic RegWriteW;
+
+
+top_mips dut(clk, reset,
+             instrF,
+             PC, PCF,
+             PcSrcD,
+             MemWriteD, MemtoRegD, ALUSrcD, BranchD, RegDstD, RegWriteD,SrracD,
+             alucontrol,
+             instrD, 
+             ALUOutE, WriteDataE,
+             ForwardAE, ForwardBE, ForwardCE,
+             ForwardAD, ForwardBD,ResultW,RegWriteW);
+             
+initial begin
+
+    reset = 0; #10; reset = 1; #10; reset = 0; #10;
+
+    for(int i = 0; i < 512; i++) begin 
+        clk = i;
+        #10;
+    end
+
+
+end
+
+
+
+
+//for basys3
+module BasysTop(input logic clk, nextInst, reset,
+        output [6:0]seg, logic dp,
+        output [3:0] an,            
+	     output  logic       memwrite, regwrite);
+	     
+	     logic clear = 0; //not needed for pulse controller
+	     logic new_clk;
+	     logic new_reset;
+
+	                   
+         logic[31:0]  instrF;
+         logic[31:0] PC, PCF;
+         logic PcSrcD;
+         logic MemWriteD, MemtoRegD, ALUSrcD, BranchD, RegDstD, RegWriteD,SrracD;
+         logic [2:0]  alucontrol;
+         logic [31:0] instrD; 
+         logic [31:0] ALUOutE, WriteDataE;
+         logic [1:0] ForwardAE, ForwardBE,ForwardCE;
+         logic ForwardAD, ForwardBD;
+         logic [31:0] ResultW;
+         logic RegWriteW;       
+	     
+	     
+	     pulse_controller nextInstController(clk, nextInst, clear, new_clk);
+	     pulse_controller resetController(clk, reset, clear, new_reset);
+	     
+	     // instantiate processor and memories  
+         controller cont (instrD[31:26], instrD[5:0],
+                       MemtoRegD, MemWriteD,
+                       ALUSrcD,
+                       RegDstD, RegWriteD,
+                   alucontrol,
+                   BranchD,srracD);
+                   
+            datapath dtp(new_clk, reset,
+                 alucontrol,
+                 RegWriteD, MemtoRegD, MemWriteD, ALUSrcD, RegDstD, BranchD, srracD,
+                  instrF,		
+                  instrD, PC, PCF,
+                  PcSrcD,                 
+                 ALUOutE, WriteDataE,
+                 ForwardAE, ForwardBE,ForwardCE,
+                 ForwardAD, ForwardBD,
+                 ResultW,RegWriteW);
+         
+         //seven segment
+         //display_controller sevseg(clk, PC[7:4], PC[3:0], ALUOutE[7:4],ALUOutE[3:0],seg,dp,an);
+         display_controller sevseg(clk, ALUOutE[7:4],ALUOutE[3:0], PC[7:4], PC[3:0], seg,dp,an);
+	     
+	     assign memwrite = MemWriteD;
+	     assign regwrite = RegWriteD;
+	     	     
+endmodule
+
+
+`timescale 1ns / 1ps
+// Define pipes that exist in the PipelinedDatapath. 
+// The pipe between Writeback (W) and Fetch (F), as well as Fetch (F) and Decode (D) is given to you.
+// Create the rest of the pipes where inputs follow the naming conventions in the book.
+
+
+module PipeFtoD(input logic[31:0] instr, PcPlus4F,
+                input logic EN, clear, clk, reset,
+                output logic[31:0] instrD, PcPlus4D);
+
+                always_ff @(posedge clk, posedge reset)
+                  if(reset)
+                        begin
+                        instrD <= 0;
+                        PcPlus4D <= 0;
+                        end
+                    else if(EN)
+                        begin
+                          if(clear) // Can clear only if the pipe is enabled, that is, if it is not stalling.
+                            begin
+                        	   instrD <= 0;
+                        	   PcPlus4D <= 0;
+                            end
+                          else
+                            begin
+                        		instrD<=instr;
+                        		PcPlus4D<=PcPlus4F;
+                            end
+                        end
+                
+endmodule
+
+// Similarly, the pipe between Writeback (W) and Fetch (F) is given as follows.
+
+module PipeWtoF(input logic[31:0] PC,
+                input logic EN, clk, reset,		// ~StallF will be connected as this EN
+                output logic[31:0] PCF);
+
+                always_ff @(posedge clk, posedge reset)
+                    if(reset)
+                        PCF <= 0;
+                    else if(EN)
+                        PCF <= PC;
+endmodule
+
+module PipeDtoE(input logic[31:0] RD1, RD2, RD3, SignImmD,
+                input logic[4:0] RsD, RtD, RdD,
+                input logic RegWriteD, MemtoRegD, MemWriteD, ALUSrcD, RegDstD, srracD,
+                input logic[2:0] ALUControlD,
+                input logic clear, clk, reset,
+                output logic[31:0] RsData, RtData, RdData,SignImmE,
+                output logic[4:0] RsE, RtE, RdE, 
+                output logic RegWriteE, MemtoRegE, MemWriteE, ALUSrcE, RegDstE, srracE,
+                output logic[2:0] ALUControlE);
+
+        always_ff @(posedge clk, posedge reset)
+          if(reset || clear)
+                begin
+                // Control signals
+                RegWriteE <= 0;
+                MemtoRegE <= 0;
+                MemWriteE <= 0;
+                ALUControlE <= 0;
+                ALUSrcE <= 0;
+                RegDstE <= 0;
+                srracE <= 0;
+                
+                // Data
+                RsData <= 0;
+                RtData <= 0;
+                RdData <= 0;
+                RsE <= 0;
+                RtE <= 0;
+                RdE <= 0;
+                SignImmE <= 0;
+                end
+            else
+                begin
+                // Control signals
+                RegWriteE <= RegWriteD;
+                MemtoRegE <= MemtoRegD;
+                MemWriteE <= MemWriteD;
+                ALUControlE <= ALUControlD;
+                ALUSrcE <= ALUSrcD;
+                RegDstE <= RegDstD;
+                srracE <= srracD;
+                
+                // Data
+                RsData <= RD1;
+                RtData <= RD2;
+                RdData <= RD3;
+                RsE <= RsD;
+                RtE <= RtD;
+                RdE <= RdD;
+                SignImmE <= SignImmD;
+                end
+
+endmodule
+
+module PipeEtoM(input logic RegWriteE, MemtoRegE,MemWriteE, SrracE,
+                input logic clk,reset,
+                input logic[31:0] AluOut, WriteDataE, SrracResE,
+                input logic [4:0] WriteRegE,
+                output logic RegWriteM, MemtoRegM,MemWriteM, SrracM,
+                output logic[31:0] AluOutM, WriteDataM, SrracResM,
+                output logic [4:0] WriteRegM);
+                  // to be filled 
+                  
+                  
+    always_ff @(posedge clk, posedge reset)
+          if(reset)
+                begin
+                // Control signals
+                RegWriteM <= 0;
+                MemtoRegM <= 0;
+                MemWriteM <= 0;
+                SrracM <= 0;
+                
+                // Data
+                AluOutM <= 0;
+                WriteDataM <= 0;
+                SrracResM <= 0;
+                WriteRegM <= 0;
+                end
+            else
+                begin
+                // Control signals
+                RegWriteM <= RegWriteE;
+                MemtoRegM <= MemtoRegE;
+                MemWriteM <= MemWriteE;
+                SrracM <= SrracE;
+               
+                // Data
+                AluOutM <= AluOut;
+                WriteDataM <= WriteDataE;
+                SrracResM <= SrracResE;
+                WriteRegM <= WriteRegE;
+                end               
+endmodule
+
+module PipeMtoW(input logic RegWriteM, MemtoRegM, SrracM,
+                input logic clk,reset,
+                input logic[31:0] ReadData,AluOutM, SrracResM, 
+                input logic [4:0] WriteRegM,
+                output logic RegWriteW, MemtoRegW, SrracW,
+                output logic[31:0] ReadDataW, AluOutW, SrracResW,
+                output logic [4:0] WriteRegW);
+                  // to be filled 
+                  
+    always_ff @(posedge clk, posedge reset)
+          if(reset)
+                begin
+                // Control signals
+                RegWriteW <= 0;
+                MemtoRegW <= 0;
+                SrracW <= 0;
+                
+                
+                // Data
+                AluOutW <= 0;
+                ReadDataW <= 0;
+                SrracResW <= 0;
+                WriteRegW <= 0;
+                end
+            else
+                begin
+                // Control signals
+                RegWriteW <= RegWriteM;
+                MemtoRegW <= MemtoRegM;
+                SrracW <= SrracM;
+
+               
+                // Data
+                AluOutW <= AluOutM;
+                ReadDataW <= ReadData;
+                SrracResW <= SrracResM;
+                WriteRegW <= WriteRegM;
+                end  
+endmodule
+
+
+
+// *******************************************************************************
+// End of the individual pipe definitions.
+// ******************************************************************************
+
+// *******************************************************************************
+// Below is the definition of the datapath.
+// The signature of the module is given. The datapath will include (not limited to) the following items:
+//  (1) Adder that adds 4 to PC
+//  (2) Shifter that shifts SignImmD to left by 2
+//  (3) Sign extender and Register file
+//  (4) PipeFtoD
+//  (5) PipeDtoE and ALU
+//  (5) Adder for PcBranchD
+//  (6) PipeEtoM and Data Memory
+//  (7) PipeMtoW
+//  (8) Many muxes
+//  (9) Hazard unit
+//  ...?
+// *******************************************************************************
+
+module datapath (input  logic clk, reset,
+                input  logic[2:0]  ALUControlD,
+                input logic RegWriteD, MemtoRegD, MemWriteD, ALUSrcD, RegDstD, BranchD, srracD,
+                 output logic [31:0] instrF,		
+                 output logic [31:0] instrD, PC, PCF,
+                output logic PcSrcD,                 
+                output logic [31:0] ALUOutE, WriteDataE,
+                output logic [1:0] ForwardAE, ForwardBE, ForwardCE,
+                 output logic ForwardAD, ForwardBD,
+                 output logic [31:0] ResultW,
+                output logic RegWriteW); // Add or remove input-outputs if necessary
+
+	// ********************************************************************
+	// Here, define the wires that are needed inside this pipelined datapath module
+	
+	// ********************************************************************
+  
+  	//* We have defined a few wires for you
+    logic [31:0] PcSrcA, PcSrcB, PcBranchD, PcPlus4F;	
+  	logic StallF;
+  
+	//* You should define others down below
+    logic StallD,FlushE,EqualD; //RegWriteW
+    logic [31:0] PcPlus4D,rd1,rd2,SignImmD,SignImmDsh,AluOutM; //resultW
+    logic [31:0] rd1Mux,rd2Mux;
+    logic [4:0] WriteRegE, WriteRegM, WriteRegW;
+    logic[4:0] RsE, RtE, RdE;
+    logic[31:0] RsData, RtData, SignImmE;
+    logic RegWriteE, MemtoRegE, MemWriteE, ALUSrcE, RegDstE;
+    logic[2:0] ALUControlE;
+    logic[31:0] SrcAE,SrcBE;
+    logic RegWriteM,MemtoRegM,MemWriteM;
+    logic[31:0] WriteDataM;
+    logic[31:0] ReadDataM, ReadDataW,AluOutW;
+    logic MemtoRegW;
+    logic [31:0] rd3,RdData,SrracResultE,SrracResultM,SrracResultW, AluOutOrSrrac,RdFinal; //for srrac
+    logic srracE,srracM,srracW;
+  
+	// ********************************************************************
+	// Instantiate the required modules below in the order of the datapath flow.
+	// ********************************************************************
+
+  
+  	//* We have provided you with some part of the datapath
+    
+  	// Instantiate PipeWtoF
+  	PipeWtoF pipe1(PC,
+                ~StallF, clk, reset,
+                PCF);
+  
+  	// Do some operations
+    assign PcPlus4F = PCF + 4;
+    assign PcSrcB = PcBranchD;
+	assign PcSrcA = PcPlus4F;
+  	mux2 #(32) pc_mux(PcSrcA, PcSrcB, PcSrcD, PC);
+
+    imem im1(PCF[7:2], instrF);
+    
+  	// Instantiate PipeFtoD
+  	PipeFtoD pipeRegFtoD( instrF, PcPlus4F,
+                 ~StallD, PcSrcD, clk, reset,
+                 instrD, PcPlus4D);
+  
+  	// Do some operations
+  	
+        //Instantiate RegFile  	     
+  	    regfile regF(clk, reset, RegWriteW, 
+                  instrD[25:21], instrD[20:16], WriteRegW, 
+                  ResultW, 
+                  rd1, rd2, rd3);     
+                  
+        signext se(instrD[15:0], SignImmD);
+        sl2 immsh(SignImmD, SignImmDsh);
+        adder pcAdd(SignImmDsh, PcPlus4D, PcBranchD);
+        
+        mux2 #(32) rfmxRS(rd1,AluOutM,ForwardAD, rd1Mux);
+        mux2 #(32) rfmxRT(rd2,AluOutM,ForwardBD, rd2Mux);    
+        
+        //equality comperator 
+        assign EqualD = (rd1Mux == rd2Mux);
+        
+        //init PCSrcD
+        assign PcSrcD = BranchD & EqualD;      
+  
+  	// Instantiate PipeDtoE
+    PipeDtoE pipeRegDtoE(rd1, rd2, rd3,SignImmD,
+                 instrD[25:21], instrD[20:16], instrD[15:11],
+                RegWriteD, MemtoRegD, MemWriteD, ALUSrcD, RegDstD, srracD,
+                ALUControlD,
+                FlushE, clk, reset,
+                RsData, RtData, RdData,SignImmE,
+                RsE, RtE, RdE, 
+                RegWriteE, MemtoRegE, MemWriteE, ALUSrcE, RegDstE, srracE,
+                ALUControlE);
+    
+  	// Do some operations
+  	mux2 #(5) regDstMux(RtE,RdE,RegDstE,WriteRegE);
+  	mux4 #(32) rsMux(RsData, ResultW, AluOutM,SrracResultM,ForwardAE,SrcAE);
+  	mux4 #(32) rtMux(RtData, ResultW, AluOutM,SrracResultM,ForwardBE,WriteDataE);
+  	mux2 #(32) aluSrcMux(WriteDataE,SignImmE,ALUSrcE,SrcBE);
+  	
+  	//for srrac
+  	adder srracAdder(RdFinal, ALUOutE, SrracResultE);
+  	mux4 #(32) rdMux(RdData, ResultW, AluOutM,SrracResultM,ForwardCE,RdFinal);
+  	
+  	     //instantiate alu 
+  	     alu Aluu(SrcAE, SrcBE, 
+             ALUControlE, 
+             ALUOutE);
+  	// Instantiate PipeEtoM
+    PipeEtoM EtoMreg(RegWriteE, MemtoRegE,MemWriteE, srracE,
+                clk,reset,
+                ALUOutE, WriteDataE, SrracResultE, 
+                WriteRegE,
+                 RegWriteM, MemtoRegM,MemWriteM, srracM,
+                 AluOutM, WriteDataM, SrracResultM,
+                 WriteRegM);
+  	// Do some operations
+        //instantiate Data Memory
+        dmem DataMemory(clk, MemWriteM,
+             AluOutM, WriteDataM,
+             ReadDataM);
+  	// Instantiate PipeMtoW
+  	 PipeMtoW MtoWreg(RegWriteM, MemtoRegM,srracM,
+                clk,reset,
+                ReadDataM,AluOutM, SrracResultM,
+                WriteRegM,
+                RegWriteW, MemtoRegW, srracW,
+                ReadDataW, AluOutW, SrracResultW,
+                WriteRegW);
+  	// Do some operations
+  	mux2 #(32) resultMux(AluOutOrSrrac,ReadDataW,MemtoRegW,ResultW);
+  	mux2 #(32) srracWMux(AluOutW,SrracResultW, srracW,AluOutOrSrrac);
+  	
+  	
+  	//Hazard Unit
+  	     HazardUnit hzdUnit( RegWriteW, BranchD,srracM,
+                 WriteRegW, WriteRegE,
+                 RegWriteM,MemtoRegM,
+                 WriteRegM,
+                 RegWriteE,MemtoRegE,
+                 RsE,RtE, RdE,
+                 instrD[25:21],instrD[20:16],
+                 ForwardAE,ForwardBE, ForwardCE,
+                 FlushE,StallD,StallF,ForwardAD, ForwardBD);            
+
+endmodule
+
+module HazardUnit( input logic RegWriteW, BranchD, SrracM,
+                input logic [4:0] WriteRegW, WriteRegE,
+                input logic RegWriteM,MemtoRegM,
+                input logic [4:0] WriteRegM,
+                input logic RegWriteE,MemtoRegE,
+                input logic [4:0] rsE,rtE,rdE,
+                input logic [4:0] rsD,rtD,
+                output logic [1:0] ForwardAE,ForwardBE, ForwardCE,
+                output logic FlushE,StallD,StallF,ForwardAD, ForwardBD
+                 ); // Add or remove input-outputs if necessary
+       
+	// ********************************************************************
+	// Here, write equations for the Hazard Logic.
+	// If you have troubles, please study pages ~420-430 in your book.
+	// ********************************************************************
+	
+	logic lwstall;
+	logic branchstall;
+	
+	always_comb  begin 
+	     
+        if ((rsE != 0) & (rsE == WriteRegM) & RegWriteM & ~SrracM) begin //RAW hazard
+            ForwardAE = 2'b10;
+        end
+        else if ((rsE != 0) & (rsE == WriteRegM) & RegWriteM & SrracM) begin
+            ForwardAE = 2'b11;
+        end
+        else if ((rsE != 0) & (rsE == WriteRegW) & RegWriteW) begin
+            ForwardAE = 2'b01;
+        end
+        else begin 
+            ForwardAE = 0;
+        end
+        
+        if ((rtE != 0) & (rtE == WriteRegM) & RegWriteM & ~SrracM) begin //RAW hazard
+            ForwardBE = 2'b10;
+        end
+        else if ((rtE != 0) & (rtE == WriteRegM) & RegWriteM & SrracM) begin
+            ForwardBE = 2'b11;
+        end
+        else if ((rtE != 0) & (rtE == WriteRegW) & RegWriteW) begin
+            ForwardBE = 2'b01;
+        end
+        else begin 
+            ForwardBE = 0;
+        end
+        
+        if ((rdE != 0) & (rdE == WriteRegM) & RegWriteM & ~SrracM) begin //RAW hazard
+            ForwardCE = 2'b10;
+        end
+        else if ((rdE != 0) & (rdE == WriteRegM) & RegWriteM & SrracM) begin
+            ForwardCE = 2'b11;
+        end
+        else if ((rdE != 0) & (rdE == WriteRegW) & RegWriteW) begin
+            ForwardCE = 2'b01;
+        end
+        else begin 
+            ForwardCE = 0;
+        end
+        //For Load use hazards, Stalling needed
+        lwstall = ((rsD == rtE) | (rtD == rtE)) & MemtoRegE;
+        //FlushE <= lwstall;
+        //StallF <= lwstall;
+        //StallD <= lwstall;
+        
+        //solving control hazards(We need both forwading and stalling)
+        ForwardAD = (rsD != 0) & ( rsD == WriteRegM) & RegWriteM;
+        ForwardBD = (rtD != 0) & (rtD == WriteRegM) & RegWriteM;
+        
+        branchstall = (BranchD & RegWriteE & (WriteRegE == rsD | WriteRegE == rtD) )
+                                            |
+                      (BranchD & MemtoRegM & (WriteRegM == rsD | WriteRegM == rtD) );
+        
+        FlushE <= lwstall | branchstall;             
+        StallF <= lwstall | branchstall;
+        StallD <= lwstall | branchstall;
+    end
+    
+endmodule
+
+
+// You can add some more logic variables for testing purposes
+// but you cannot remove existing variables as we need you to output 
+// these values on the waveform for grading
+module top_mips (input  logic        clk, reset,
+             output  logic[31:0]  instrF,
+             output logic[31:0] PC, PCF,
+             output logic PcSrcD,
+             output logic MemWriteD, MemtoRegD, ALUSrcD, BranchD, RegDstD, RegWriteD, srracD,
+             output logic [2:0]  alucontrol,
+             output logic [31:0] instrD, 
+             output logic [31:0] ALUOutE, WriteDataE,
+             output logic [1:0] ForwardAE, ForwardBE, ForwardCE,
+             output logic ForwardAD, ForwardBD,
+             output logic [31:0] ResultW,
+             output logic RegWriteW);
+
+
+	// ********************************************************************
+	// Below, instantiate a controller and a datapath with their new (if modified) signatures
+	// and corresponding connections.
+	// ********************************************************************
+     controller cont (instrD[31:26], instrD[5:0],
+                       MemtoRegD, MemWriteD,
+                       ALUSrcD,
+                       RegDstD, RegWriteD,
+                   alucontrol,
+                   BranchD,srracD);
+                   
+     datapath dp(clk, reset,
+                 alucontrol,
+                 RegWriteD, MemtoRegD, MemWriteD, ALUSrcD, RegDstD, BranchD, srracD,
+                  instrF,		
+                  instrD, PC, PCF,
+                  PcSrcD,                 
+                 ALUOutE, WriteDataE,
+                 ForwardAE, ForwardBE,ForwardCE,
+                 ForwardAD, ForwardBD,
+                 ResultW,RegWriteW);
+                                  
+                
+endmodule
+
+
+// External instruction memory used by MIPS
+// processor. It models instruction memory as a stored-program 
+// ROM, with address as input, and instruction as output
+// Modify it to test your own programs.
+
+module imem ( input logic [5:0] addr, output logic [31:0] instr);
+
+// imem is modeled as a lookup table, a stored-program byte-addressable ROM
+	always_comb
+	   case ({addr,2'b00})		   	// word-aligned fetch
+//
+// 	***************************************************************************
+//	Here, you can paste your own test cases that you prepared for the part 1-e.
+//  An example test program is given below.        
+//	***************************************************************************
+//
+//		address		instruction
+//		-------		-----------
+//	   8'h00: instr = 32'h20080007;
+//       8'h04: instr = 32'h20090005;
+//       8'h08: instr = 32'h200a0000;
+//       8'h0c: instr = 32'h210b000f;
+//       8'h10: instr = 32'h01095020;
+//       8'h14: instr = 32'h01095025;
+//       8'h18: instr = 32'h01095024;
+//       8'h1c: instr = 32'h01095022;
+//       8'h20: instr = 32'h0109502a;
+//       8'h24: instr = 32'had280002;
+//       8'h28: instr = 32'h8d090000;
+//       8'h2c: instr = 32'h1100fff5;
+//       8'h30: instr = 32'h200a000a;
+//       8'h34: instr = 32'h2009000c;
+
+//         // Test code for no hazards(works fine)
+//        8'h00: instr = 32'h20080005;    // addi $t0, $zero, 5              
+//        8'h04: instr = 32'h2009000c;    // addi $t1, $zero, 12
+//        8'h08: instr = 32'h200a0006;    // addi $t2, $zero, 6
+//        8'h0c: instr = 32'h210b0004;    // addi $t3, $t0, 4
+//        8'h10: instr = 32'h210b0004;    // addi $t3, $t0, 4
+//        8'h14: instr = 32'h01288025;    // or $s0, $t1, $t0 #s0 = d
+//        8'h18: instr = 32'h012a8824;    // and $s1, $t1, $t2 #s1 = 4
+//        8'h1c: instr = 32'h010b9020;    // add $s2, $t0, $t3 #s2 = 5 + 9 = 14 = e
+//        8'h20: instr = 32'h010a202a;    // slt $a0, $t0, $t2
+//        8'h24: instr = 32'h02112820;    // add $a1, $s0, $s1 #$a1 = 17 =0x11
+//        8'h28: instr = 32'h02493022;    // sub $a2, $s2, $t1 #$a2 = e - 12 = 2
+//        8'h2c: instr = 32'had320074;    // sw $s2, 0x74($t1)
+//        8'h30: instr = 32'h8c020080;    // lw $v0, 0x80($zero)
+
+
+//        // Test code for compute-use(RAW) hazards(Works Fine)
+//        8'h00: instr = 32'h20080005;
+//        8'h04: instr = 32'h21090007;
+//        8'h08: instr = 32'h210a0002;
+//        8'h0c: instr = 32'h012a5025;
+//        8'h10: instr = 32'h01498024;
+//        8'h14: instr = 32'h01108820;
+//        8'h18: instr = 32'h0151902a;
+//        8'h1c: instr = 32'h02318820;
+//        8'h20: instr = 32'h02329822;
+//        8'h24: instr = 32'had330000;
+//        8'h28: instr = 32'h8c020000;
+
+//          // Test code for load-use hazard
+//          8'h00: instr = 32'h20080005;
+//          8'h04: instr = 32'hac080060;
+//          8'h08: instr = 32'h8c090060;
+//          8'h0c: instr = 32'h212a0004;
+//          8'h10: instr = 32'h212b0003;
+//          8'h14: instr = 32'h8d6b0058;
+//          8'h18: instr = 32'h014b5022;
+//          8'h1c: instr = 32'hac0a0070;
+//          8'h20: instr = 32'h8c080070;
+//          8'h24: instr = 32'h8d09006c;
+//          8'h28: instr = 32'h01094820;     
+
+//            //Test code for branch hazards     
+//            8'h00: instr = 32'h20080005;
+//            8'h04: instr = 32'h20090003;
+//            8'h08: instr = 32'h1109ffff;
+//            8'h0c: instr = 32'h01285020;
+//            8'h10: instr = 32'h01094022;
+//            8'h14: instr = 32'h2129ffff;
+//            8'h18: instr = 32'h1128fffb;
+//            8'h1c: instr = 32'hac0a0050;
+//            8'h20: instr = 32'h01284025;
+//            8'h24: instr = 32'h0128482a;
+//            8'h28: instr = 32'h1120fff7;
+//            8'h2c: instr = 32'h8c0b0050;
+//            8'h30: instr = 32'h01284024;
+//            8'h34: instr = 32'h1108fff1;
+
+               //Test Code For Srrac
+                8'h00: instr = 32'h20040005; //addi $a0, $zero,5
+                8'h04: instr = 32'h2005000c; //addi $a1, $zero, 12
+                8'h08: instr = 32'h20060002; // addi $a2, $zero, 2
+                8'h0c: instr = 32'hfca62000; // sracc $a0, $a1, $a2
+                8'h10: instr = 32'h20840001; // addi $a0, $0,1
+                8'h14: instr = 32'h2005000c; // addi $a1, $zero, 12
+                8'h18: instr = 32'h20060002; // addi $a2, $zero, 2
+                8'h1c: instr = 32'h20040005;//  addi $a0, $zero, 5 
+                8'h20: instr = 32'hfca62000;//  sracc $a0, $a1, $a2
+                8'h24: instr = 32'h20840001;// addi $a0, $0,1
+                8'h28: instr = 32'h200f0032;// addi $t7, $zero, 0x32 
+                8'h2c: instr = 32'h20070005;// addi $a3, $zero,5
+                8'h30: instr = 32'hade70000;// sw $a3, 0($t7)
+                8'h34: instr = 32'h2005000c;// addi $a1, $zero, 12
+                8'h38: instr = 32'h8de40000;// lw $a0, 0($t7)
+                8'h3c: instr = 32'h20060002;// addi $a2, $zero, 2
+                8'h40: instr = 32'hfca62000;// sracc $a0, $a1, $a2
+                8'h44: instr = 32'h20840001;// addi $a0, $0,1
+                8'h48: instr = 32'hfca62000;// sracc $a0, $a1, $a2
+                8'h4c: instr = 32'hfca62000;// sracc $a0, $a1, $a2
+                8'h50: instr = 32'h20840001;// addi $a0, $0,1
+                8'h54: instr = 32'h20050010; //addi $a1, $zero,16
+                8'h58: instr = 32'h10a4ffeb; //beq $a1, $a0, -20
+                8'h5c: instr = 32'h20a50010; //addi $a1, $a1, 16 
+                
+                
+           default:  instr = {32{1'bx}};	// unknown address
+	   endcase
+endmodule
+
+
+// 	***************************************************************************
+//	Below are the modules that you shouldn't need to modify at all..
+//	***************************************************************************
+
+module controller(input  logic[5:0] op, funct,
+                  output logic     memtoreg, memwrite,
+                  output logic     alusrc,
+                  output logic     regdst, regwrite,
+                  output logic[2:0] alucontrol,
+                  output logic branch,
+                  output logic srrac);
+
+   logic [1:0] aluop;
+
+  maindec md (op, memtoreg, memwrite, branch, alusrc, regdst, regwrite, aluop, srrac);
+
+   aludec  ad (funct, aluop, alucontrol);
+
+endmodule
+
+// External data memory used by MIPS single-cycle processor
+
+module dmem (input  logic        clk, we,
+             input  logic[31:0]  a, wd,
+             output logic[31:0]  rd);
+
+   logic  [31:0] RAM[63:0];
+  
+   assign rd = RAM[a[31:2]];    // word-aligned  read (for lw)
+
+   always_ff @(posedge clk)
+     if (we)
+       RAM[a[31:2]] <= wd;      // word-aligned write (for sw)
+
+endmodule
+
+module maindec (input logic[5:0] op, 
+	              output logic memtoreg, memwrite, branch,
+	              output logic alusrc, regdst, regwrite,
+	              output logic[1:0] aluop, 
+	              output logic srrac);
+  logic [8:0] controls;
+
+   assign {regwrite, regdst, alusrc, branch, memwrite,
+                memtoreg,  aluop, srrac} = controls;
+
+  always_comb
+    case(op)
+      6'b000000: controls <= 9'b110000100; // R-type
+      6'b100011: controls <= 9'b101001000; // LW
+      6'b101011: controls <= 9'b001010000; // SW
+      6'b000100: controls <= 9'b000100010; // BEQ
+      6'b001000: controls <= 9'b101000000; // ADDI
+      6'b111111: controls <= 9'b110000111; //srrac
+      default:   controls <= 9'bxxxxxxxxx; // illegal op
+    endcase
+endmodule
+
+module aludec (input    logic[5:0] funct,
+               input    logic[1:0] aluop,
+               output   logic[2:0] alucontrol);
+  always_comb
+    case(aluop)
+      2'b00: alucontrol  = 3'b010;  // add  (for lw/sw/addi)
+      2'b01: alucontrol  = 3'b110;  // sub   (for beq)
+      2'b11:  alucontrol =  3'b011;  //srrac (for srrac)
+      default: case(funct)          // R-TYPE instructions
+          6'b100000: alucontrol  = 3'b010; // ADD
+          6'b100010: alucontrol  = 3'b110; // SUB
+          6'b100100: alucontrol  = 3'b000; // AND
+          6'b100101: alucontrol  = 3'b001; // OR
+          6'b101010: alucontrol  = 3'b111; // SLT
+          default:   alucontrol  = 3'bxxx; // ???
+        endcase
+    endcase
+endmodule
+
+module regfile (input    logic clk, reset, we3, 
+                input    logic[4:0]  ra1, ra2, wa3, 
+                input    logic[31:0] wd3, 
+                output   logic[31:0] rd1, rd2, rd3);
+
+  logic [31:0] rf [31:0];
+
+  // three ported register file: read two ports combinationally
+  // write third port on falling edge of clock. Register0 hardwired to 0.
+
+  always_ff @(negedge clk)
+     if (we3) 
+         rf [wa3] <= wd3;
+  	 else if(reset)
+       for (int i=0; i<32; i++) rf[i] = {32{1'b0}};	
+
+  assign rd1 = (ra1 != 0) ? rf [ra1] : 0;
+  assign rd2 = (ra2 != 0) ? rf[ ra2] : 0;
+  assign rd3 = rf[wa3];
+endmodule
+
+module alu(input  logic [31:0] a, b, 
+           input  logic [2:0]  alucont, 
+           output logic [31:0] result
+           );
+    
+    always_comb
+        case(alucont)
+            3'b010: result = a + b;
+            3'b011: result = a >> b;
+            3'b110: result = a - b;
+            3'b000: result = a & b;
+            3'b001: result = a | b;
+            3'b111: result = (a < b) ? 1 : 0;
+            default: result = {32{1'bx}};
+        endcase
+    
+    //assign zero = (result == 0) ? 1'b1 : 1'b0;
+    
+endmodule
+
+module adder (input  logic[31:0] a, b,
+              output logic[31:0] y);
+     
+     assign y = a + b;
+endmodule
+
+module sl2 (input  logic[31:0] a,
+            output logic[31:0] y);
+     
+     assign y = {a[29:0], 2'b00}; // shifts left by 2
+endmodule
+
+module signext (input  logic[15:0] a,
+                output logic[31:0] y);
+              
+  assign y = {{16{a[15]}}, a};    // sign-extends 16-bit a
+endmodule
+
+// parameterized register
+module flopr #(parameter WIDTH = 8)
+              (input logic clk, reset, 
+	       input logic[WIDTH-1:0] d, 
+               output logic[WIDTH-1:0] q);
+
+  always_ff@(posedge clk, posedge reset)
+    if (reset) q <= 0; 
+    else       q <= d;
+endmodule
+
+
+// paramaterized 2-to-1 MUX
+module mux2 #(parameter WIDTH = 8)
+             (input  logic[WIDTH-1:0] d0, d1,  
+              input  logic s, 
+              output logic[WIDTH-1:0] y);
+  
+   assign y = s ? d1 : d0; 
+endmodule
+
+// paramaterized 4-to-1 MUX
+module mux4 #(parameter WIDTH = 8)
+             (input  logic[WIDTH-1:0] d0, d1, d2, d3,
+              input  logic[1:0] s, 
+              output logic[WIDTH-1:0] y);
+  
+   assign y = s[1] ? ( s[0] ? d3 : d2 ) : (s[0] ? d1 : d0); 
+endmodule
+
+# This file is a general .xdc for the Basys3 rev B board 
+# To use it in a project: 
+# - uncomment the lines corresponding to used pins 
+# - rename the used ports (in each line, after get_ports) according to the top level signal names in the project 
+
+# Clock signal 
+set_property PACKAGE_PIN W5 [get_ports clk]  	 	 	 	  
+ 	set_property IOSTANDARD LVCMOS33 [get_ports clk] 
+ create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports clk] 
+
+# Switches 
+#set_property PACKAGE_PIN V17 [get_ports {sb}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sb}] 
+#set_property PACKAGE_PIN V16 [get_ports {sa}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sa}] 
+#set_property PACKAGE_PIN W16 [get_ports {reset}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {reset}] 
+#set_property PACKAGE_PIN W17 [get_ports {c}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {c}] 
+#set_property PACKAGE_PIN W15 [get_ports {sw[4]}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[4]}] 
+#set_property PACKAGE_PIN V15 [get_ports {sw[5]}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[5]}] 
+#set_property PACKAGE_PIN W14 [get_ports {sw[6]}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[6]}] 
+#set_property PACKAGE_PIN W13 [get_ports {sw[7]}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[7]}] 
+#set_property PACKAGE_PIN V2 [get_ports {sw[8]}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[8]}] 
+#set_property PACKAGE_PIN T3 [get_ports {sw[9]}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[9]}] 
+#set_property PACKAGE_PIN T2 [get_ports {sw[10]}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {sw[10]}] 
+#set_property PACKAGE_PIN R3 [get_ports {i4}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {i4}] 
+#set_property PACKAGE_PIN W2 [get_ports {i3}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {i3}] 
+#set_property PACKAGE_PIN U1 [get_ports {i2}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {i2}] 
+#set_property PACKAGE_PIN T1 [get_ports {i1}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {i1}] 
+#set_property PACKAGE_PIN R2 [get_ports {c1}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {c1}] 
+  
+# LEDs 
+set_property PACKAGE_PIN U16 [get_ports {memwrite}]  	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {memwrite}] 
+set_property PACKAGE_PIN E19 [get_ports {regwrite}]  	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {regwrite}] 
+#set_property PACKAGE_PIN U19 [get_ports {lb[2]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {lb[2]}] 
+#set_property PACKAGE_PIN V19 [get_ports {la[0]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {la[0]}] 
+#set_property PACKAGE_PIN W18 [get_ports {la[0]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {la[0]}] 
+#set_property PACKAGE_PIN U15 [get_ports {la[1]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {la[1]}] 
+#set_property PACKAGE_PIN U14 [get_ports {la[2]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {la[2]}] 
+#set_property PACKAGE_PIN V14 [get_ports {led[7]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {led[7]}] 
+#set_property PACKAGE_PIN V13 [get_ports {led[8]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {led[8]}] 
+#set_property PACKAGE_PIN V3 [get_ports {led[9]}] 	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {led[9]}] 
+#set_property PACKAGE_PIN W3 [get_ports {led[10]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {led[10]}] 
+#set_property PACKAGE_PIN U3 [get_ports {led[11]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {led[11]}] 
+#set_property PACKAGE_PIN P3 [get_ports {led[12]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {led[12]}] 
+#set_property PACKAGE_PIN N3 [get_ports {teststate[0]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {teststate[0]}] 
+#set_property PACKAGE_PIN P1 [get_ports {teststate[1]}]  	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports {teststate[1]}] 
+#set_property PACKAGE_PIN L1 [get_ports {teststate[2]}]  	 	 	 	  			
+#	set_property IOSTANDARD LVCMOS33 [get_ports {teststate[2]}] 
+ 	 
+ 	 
+##7 segment display 
+set_property PACKAGE_PIN W7 [get_ports {seg[0]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {seg[0]}] 
+set_property PACKAGE_PIN W6 [get_ports {seg[1]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {seg[1]}] 
+set_property PACKAGE_PIN U8 [get_ports {seg[2]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {seg[2]}] 
+set_property PACKAGE_PIN V8 [get_ports {seg[3]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {seg[3]}] 
+set_property PACKAGE_PIN U5 [get_ports {seg[4]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {seg[4]}] 
+set_property PACKAGE_PIN V5 [get_ports {seg[5]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {seg[5]}] 
+set_property PACKAGE_PIN U7 [get_ports {seg[6]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {seg[6]}] 
+set_property PACKAGE_PIN V7 [get_ports dp]  	 	 	 	  
+ 	set_property IOSTANDARD LVCMOS33 [get_ports dp] 
+set_property PACKAGE_PIN U2 [get_ports {an[0]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {an[0]}] 
+set_property PACKAGE_PIN U4 [get_ports {an[1]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {an[1]}] 
+set_property PACKAGE_PIN V4 [get_ports {an[2]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {an[2]}] 
+set_property PACKAGE_PIN W4 [get_ports {an[3]}] 	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports {an[3]}] 
+
+##Buttons 
+#set_property PACKAGE_PIN U18 [get_ports btnC]  	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports btnC] 
+#set_property PACKAGE_PIN T18 [get_ports btnU]  	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports btnU] 
+set_property PACKAGE_PIN W19 [get_ports nextInst]  	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports nextInst] 
+set_property PACKAGE_PIN T17 [get_ports reset]  	 	 	 	 	 
+ 	set_property IOSTANDARD LVCMOS33 [get_ports reset] 
+#set_property PACKAGE_PIN U17 [get_ports btnD]  	 	 	 	 	 
+# 	set_property IOSTANDARD LVCMOS33 [get_ports btnD] 
+  
+##Pmod Header JA 
+##Sch name = JA1 
+#set_property PACKAGE_PIN J1 [get_ports {JA[0]}] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JA[0]}] 
+##Sch name = JA2 
+#set_property PACKAGE_PIN L2 [get_ports {JA[1]}] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JA[1]}] 
+##Sch name = JA3 
+#set_property PACKAGE_PIN J2 [get_ports {JA[2]}] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JA[2]}] 
+##Sch name = JA4 
+#set_property PACKAGE_PIN G2 [get_ports {JA[3]}] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JA[3]}] 
+##Sch name = JA7 
+#set_property PACKAGE_PIN H1 [get_ports {JA[4]}] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JA[4]}] 
+##Sch name = JA8 
+#set_property PACKAGE_PIN K2 [get_ports {JA[5]}] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JA[5]}] 
+##Sch name = JA9 
+#set_property PACKAGE_PIN H2 [get_ports {JA[6]}] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JA[6]}] 
+##Sch name = JA10 
+#set_property PACKAGE_PIN G3 [get_ports {JA[7]}] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JA[7]}] 
+##Pmod Header JB 
+##Sch name = JB1 
+#set_property PACKAGE_PIN A14 [get_ports {JB[0]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JB[0]}] 
+##Sch name = JB2 
+#set_property PACKAGE_PIN A16 [get_ports {JB[1]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JB[1]}] 
+##Sch name = JB3 
+#set_property PACKAGE_PIN B15 [get_ports {JB[2]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JB[2]}] ##Sch name = JB4 
+#set_property PACKAGE_PIN B16 [get_ports {JB[3]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JB[3]}] 
+##Sch name = JB7 
+#set_property PACKAGE_PIN A15 [get_ports {JB[4]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JB[4]}] 
+##Sch name = JB8 
+#set_property PACKAGE_PIN A17 [get_ports {JB[5]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JB[5]}] 
+##Sch name = JB9 
+#set_property PACKAGE_PIN C15 [get_ports {JB[6]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JB[6]}] 
+##Sch name = JB10  
+#set_property PACKAGE_PIN C16 [get_ports {JB[7]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JB[7]}] 
+  
+##Pmod Header JC 
+##Sch name = JC1 
+#set_property PACKAGE_PIN K17 [get_ports {JC[0]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JC[0]}] 
+##Sch name = JC2 
+#set_property PACKAGE_PIN M18 [get_ports {JC[1]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JC[1]}] 
+##Sch name = JC3 
+#set_property PACKAGE_PIN N17 [get_ports {JC[2]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JC[2]}] 
+##Sch name = JC4 
+#set_property PACKAGE_PIN P18 [get_ports {JC[3]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JC[3]}] 
+##Sch name = JC7 
+#set_property PACKAGE_PIN L17 [get_ports {JC[4]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JC[4]}] 
+##Sch name = JC8 
+#set_property PACKAGE_PIN M19 [get_ports {JC[5]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JC[5]}] 
+##Sch name = JC9 
+#set_property PACKAGE_PIN P17 [get_ports {JC[6]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JC[6]}] 
+##Sch name = JC10 
+#set_property PACKAGE_PIN R18 [get_ports {JC[7]}]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JC[7]}] 
+
+##Pmod Header JXADC 
+##Sch name = XA1_P 
+#set_property PACKAGE_PIN J3 [get_ports {JXADC[0]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JXADC[0]}] 
+##Sch name = XA2_P 
+#set_property PACKAGE_PIN L3 [get_ports {JXADC[1]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JXADC[1]}] 
+##Sch name = XA3_P 
+#set_property PACKAGE_PIN M2 [get_ports {JXADC[2]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JXADC[2]}] 
+##Sch name = XA4_P 
+#set_property PACKAGE_PIN N2 [get_ports {JXADC[3]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JXADC[3]}] 
+##Sch name = XA1_N 
+#set_property PACKAGE_PIN K3 [get_ports {JXADC[4]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JXADC[4]}] 
+##Sch name = XA2_N 
+#set_property PACKAGE_PIN M3 [get_ports {JXADC[5]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JXADC[5]}] 
+##Sch name = XA3_N 
+#set_property PACKAGE_PIN M1 [get_ports {JXADC[6]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JXADC[6]}] 
+##Sch name = XA4_N 
+#set_property PACKAGE_PIN N1 [get_ports {JXADC[7]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {JXADC[7]}] 
+
+##VGA Connector 
+#set_property PACKAGE_PIN G19 [get_ports {vgaRed[0]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaRed[0]}] 
+#set_property PACKAGE_PIN H19 [get_ports {vgaRed[1]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaRed[1]}] 
+#set_property PACKAGE_PIN J19 [get_ports {vgaRed[2]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaRed[2]}] 
+#set_property PACKAGE_PIN N19 [get_ports {vgaRed[3]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaRed[3]}] 
+#set_property PACKAGE_PIN N18 [get_ports {vgaBlue[0]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaBlue[0]}] 
+#set_property PACKAGE_PIN L18 [get_ports {vgaBlue[1]}] 	 	 	 	  		
+	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaBlue[1]}] 
+#set_property PACKAGE_PIN K18 [get_ports {vgaBlue[2]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaBlue[2]}] 
+#set_property PACKAGE_PIN J18 [get_ports {vgaBlue[3]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaBlue[3]}] 
+#set_property PACKAGE_PIN J17 [get_ports {vgaGreen[0]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaGreen[0]}] 
+#set_property PACKAGE_PIN H17 [get_ports {vgaGreen[1]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaGreen[1]}] 
+#set_property PACKAGE_PIN G17 [get_ports {vgaGreen[2]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaGreen[2]}] 
+#set_property PACKAGE_PIN D17 [get_ports {vgaGreen[3]}]  	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {vgaGreen[3]}] 
+#set_property PACKAGE_PIN P19 [get_ports Hsync] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports Hsync] 
+#set_property PACKAGE_PIN R19 [get_ports Vsync] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports Vsync] 
+
+##USB-RS232 Interface 
+#set_property PACKAGE_PIN B18 [get_ports RsRx] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports RsRx] 
+#set_property PACKAGE_PIN A18 [get_ports RsTx] 	 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports RsTx] 
+
+##USB HID (PS/2) 
+#set_property PACKAGE_PIN C17 [get_ports PS2Clk] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports PS2Clk] 
+ 	#set_property PULLUP true [get_ports PS2Clk] 
+#set_property PACKAGE_PIN B17 [get_ports PS2Data]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports PS2Data] 	 
+ 	#set_property PULLUP true [get_ports PS2Data] 
+
+##Quad SPI Flash 
+##Note that CCLK_0 cannot be placed in 7 series devices. You can access it using the 
+##STARTUPE2 primitive. 
+#set_property PACKAGE_PIN D18 [get_ports {QspiDB[0]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {QspiDB[0]}] 
+#set_property PACKAGE_PIN D19 [get_ports {QspiDB[1]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {QspiDB[1]}] 
+#set_property PACKAGE_PIN G18 [get_ports {QspiDB[2]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {QspiDB[2]}] 
+#set_property PACKAGE_PIN F18 [get_ports {QspiDB[3]}] 	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports {QspiDB[3]}] 
+#set_property PACKAGE_PIN K19 [get_ports QspiCSn]  	 	 	 	 
+ 	#set_property IOSTANDARD LVCMOS33 [get_ports QspiCSn] 

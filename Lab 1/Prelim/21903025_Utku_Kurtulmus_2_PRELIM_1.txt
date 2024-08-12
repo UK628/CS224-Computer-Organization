@@ -1,0 +1,447 @@
+---------------------PART-1---------------------------
+
+
+	.text
+	.globl __start
+	
+__start:
+	#Get The address of the array, and adress of the size memory location
+	la $t0,array # the address of the first element in the array will be stored in the t0 regiter
+	la $t1,size #the address of the size will be stored in t1, we will be able to reach the location 
+	add $t2, $zero, $zero #index for the array
+	
+	jal getSize #get the size from the user
+	jal getElements #initilaze the array
+	jal printTheArray #print the contents of the array one by one
+	jal twist #twist the arrays contents
+	jal printTheArray
+	jal end 
+
+#---------------------------------------------------------------------------	
+#functions	
+	#Get the size of the array
+	getSize:
+		#print line
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#print the askSize prompt for the user
+		li $v0,4
+		la $a0, askTheSize
+		syscall
+		
+		#print line
+		la $a0, endl
+		syscall
+		
+		#get the size input from the user
+		li $v0,5 #the input will be stored in the v0 register
+		syscall
+		
+		#check whether the input is valid or not, if the input is not valid go back to getSize
+		bgt $v0, 20, getSize 
+		blt $v0, 0, getSize
+		
+		#store the size in the allocated memory for the size
+		sw $v0, size
+		
+		#go the next inst
+		jr $ra
+	
+	#---------------------------------------------------------------------------
+	
+	#Initilaze the array by getting the inputs from the user
+	getElements:
+	
+		#print line
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#check whether there is an remaining element, if not jump to printArr
+		lw $t3, 0($t1) #reach the size memory location by using the t1 register and store the value in t3 register	
+		mul $t3, $t3, 4 	
+		bge $t2, $t3, exitt
+	
+		#print the prompt for the next element
+		li $v0, 4
+		la $a0, askTheElement
+		syscall
+		
+		#print line
+		la $a0, endl
+		syscall
+		
+		#get the element from the user
+		li $v0, 5
+		syscall
+		
+		#store the element in the array
+		sw $v0, array($t2)
+		
+		#increment index
+		addi $t2, $t2, 4
+		
+		#go back to the beginning
+		j getElements 
+		
+		exitt:	
+			addi $t2, $zero, 0 # make the index 0 again
+			#go the next inst
+			jr $ra		
+		
+	#---------------------------------------------------------------------------				
+	printTheArray:
+			#print line
+			li $v0, 4
+			la $a0, endl
+			syscall
+		print:
+			#check whether there is an remaining element, if not jump to end
+			lw $t3, 0($t1) #reach the size memory location by using the t1 register and store the value in t3 register	 	
+			bge $t2, $t3, endFunc
+		
+			#get the next element
+			lw $t4, 0($t0)
+			addi $t0, $t0, 4
+						
+			#print the next element
+			li $v0, 1
+			addi $a0, $t4, 0
+			syscall
+			
+			#print line
+			li $v0, 4
+			la $a0, endl
+			syscall
+		
+			#increment the index
+			addi $t2, $t2, 1
+		
+			#go back to the beginning
+			j print 
+		endFunc:
+			la $t0,array
+			addi $t2, $zero, 0
+			#go the next inst
+			jr $ra		
+	#---------------------------------------------------------------------------		
+	twist:
+		#first find the middle index of the array (size + 1)/2
+		lw $t3, 0($t1) #get the size to t3
+		addi $t3, $t3, 1 #increment by 1
+		div $t3,$t3,2 #the middle index is stored in t3 register
+		
+		#we have 2 pointers one the the previous index pointer $t2, and one will be $4 that will point the beginning of the second half
+		#we assumed that index start from 1 and goes to size, and calculatte the middle index accordingly but this is not the case 
+		#now the middle index actually pointing the first element of the second half. (0 to size -1)
+		addi $t4, $t3,0 
+		mul $t4, $t4, 4 #we need to increment the address by 4 since each word is 4 byte.
+		lw $t3, 0($t1) #get the size back to t3
+		mul $t3, $t3, 4 #for comporison purposes
+		
+		
+		#we will swap the elements from first half to second half
+		swap:
+			#check if you are done
+			bge $t4, $t3, endOfTwist
+			
+			lw $t5, array($t2) #get the element from the first element and store it in t5
+			lw $t6, array($t4) #element from the second half stored in t6
+			
+			sw $t5 , array($t4)
+			sw $t6, array ($t2)
+			
+			#increment the indexes
+			addi $t2, $t2,4 
+			addi $t4, $t4,4
+			
+			#jump to the beginning
+			j swap
+		
+		endOfTwist:
+			addi $t2, $zero, 0
+			#go the next inst
+			jr $ra
+	#---------------------------------------------------------------------------
+			
+	end:
+		li $v0, 10
+		syscall
+		
+	
+	.data 
+	array : .space 80 #80 byte allocation each word 4 byte so we allacoted space for maximum 20 elements
+	size : .space 4 
+	endl : .asciiz "\n"
+	test: .asciiz "test"
+	askTheSize: .asciiz "Enter the size of the array, The size must be between 0 and 20 inclusive."
+	askTheElement: .asciiz "Enter the next element "
+
+---------------------PART-2---------------------------
+
+
+	.text
+	.globl __start
+	
+__start:
+	#Get The address of the array, and adress of the size memory location
+	la $t0,array # the address of the first element in the array will be stored in the t0 regiter
+	la $t1,size #the address of the size will be stored in t1, we will be able to reach the location 
+	add $t2, $zero, $zero #index for the array
+	
+	jal getSize #get the size from the user
+	jal getElements #initilaze the array
+	jal check #twist the arrays contents
+	jal end 
+
+#---------------------------------------------------------------------------	
+#functions	
+	#Get the size of the array
+	getSize:
+		#print line
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#print the askSize prompt for the user
+		li $v0,4
+		la $a0, askTheSize
+		syscall
+		
+		#print line
+		la $a0, endl
+		syscall
+		
+		#get the size input from the user
+		li $v0,5 #the input will be stored in the v0 register
+		syscall
+		
+		#check whether the input is valid or not, if the input is not valid go back to getSize
+		bgt $v0, 20, getSize 
+		blt $v0, 0, getSize
+		
+		#store the size in the allocated memory for the size
+		sw $v0, size
+		
+		#go the next inst
+		jr $ra
+	
+	#---------------------------------------------------------------------------
+	
+	#Initilaze the array by getting the inputs from the user
+	getElements:
+	
+		#print line
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#check whether there is an remaining element, if not jump to printArr
+		lw $t3, 0($t1) #reach the size memory location by using the t1 register and store the value in t3 register	
+		mul $t3, $t3, 4 	
+		bge $t2, $t3, exitt
+	
+		#print the prompt for the next element
+		li $v0, 4
+		la $a0, askTheElement
+		syscall
+		
+		#print line
+		la $a0, endl
+		syscall
+		
+		#get the element from the user
+		li $v0, 5
+		syscall
+		
+		#store the element in the array
+		sw $v0, array($t2)
+		
+		#increment index
+		addi $t2, $t2, 4
+		
+		#go back to the beginning
+		j getElements 
+		
+		exitt:	
+			addi $t2, $zero, 0 # make the index 0 again
+			#go the next inst
+			jr $ra		
+		
+	
+	#---------------------------------------------------------------------------		
+	check:
+		#first find the middle index of the array (size + 1)/2
+		lw $t3, 0($t1) #get the size to t3
+		addi $t3, $t3, 1 #increment by 1
+		div $t3,$t3,2 #the middle index is stored in t3 register
+		
+		#we have 2 pointers one the the previous index pointer $t2, and one will be $4 that will point the beginning of the second half
+		#we assumed that index start from 1 and goes to size, and calculatte the middle index accordingly but this is not the case 
+		#now the middle index actually pointing the first element of the second half. (0 to size -1)
+		addi $t4, $t3,0 
+		mul $t4, $t4, 4 #we need to increment the address by 4 since each word is 4 byte.
+		lw $t3, 0($t1) #get the size back to t3
+		mul $t3, $t3, 4 #for comporison purposes
+		
+		
+		#we will check each element one by one
+		checkElements:
+			#check if you are done
+			bge $t4, $t3, true 
+			
+			lw $t5, array($t2) #get the element from the first element and store it in t5
+			lw $t6, array($t4) #element from the second half stored in t6
+			
+			bne $t5, $t6, false
+			
+			#increment the indexes
+			addi $t2, $t2,4 
+			addi $t4, $t4,4
+			
+			#jump to the beginning
+			j checkElements
+		true:	
+			li $v0, 4
+			la $a0, identical
+			syscall
+			
+			addi $t2, $zero, 0
+			#go the next inst
+			jr $ra
+		false:
+			li $v0, 4
+			la $a0, notIdentical
+			syscall
+			
+			addi $t2, $zero, 0
+			#go the next inst
+			jr $ra
+	#---------------------------------------------------------------------------
+			
+	end:
+		li $v0, 10
+		syscall
+		
+	.data 
+	array : .space 80 #80 byte allocation each word 4 byte so we allacoted space for maximum 20 elements
+	size : .space 4 
+	endl : .asciiz "\n"
+	identical: .asciiz "Identical"
+	notIdentical: .asciiz "Not identical."
+	askTheSize: .asciiz "Enter the size of the array, The size must be between 0 and 20 inclusive."
+	askTheElement: .asciiz "Enter the next element "
+
+
+
+
+---------------------PART-3---------------------------
+
+
+	.text
+	.globl __start
+__start:
+	#this program implements the following exp x= (a x (b - c)) % 16 without using div operation
+	jal Arithmetic
+	jal end
+	
+#functions-------------------------------------
+
+Arithmetic:
+	#get the inputs a,b,c from the user and store them at $t0, $t1, $t2 registers
+	li $v0, 4
+	la $a0, prompt
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	la $a0, askForA
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	li $v0, 5 #get A
+	syscall 
+	
+	move $t0, $v0 #store A
+	
+	li $v0, 4
+	la $a0, endl
+	syscall
+	
+	la $a0, askForB
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	li $v0, 5 #get B
+	syscall 
+	
+	move $t1, $v0 #store B
+	
+	li $v0, 4 
+	la $a0, endl
+	syscall
+	
+	la $a0, askForC
+	syscall
+	
+	la $a0, endl
+	syscall
+	
+	li $v0, 5 #get C
+	syscall 
+	
+	move $t2, $v0 #store C
+	
+	#------------------------------------------
+	#calculate (a x (b - c)) and store it
+	sub $t3, $t1, $t2
+	mul $t3, $t3, $t0
+	#calculate %16 without using div
+	step1:
+		blt $t3, 16, step2 
+		sub $t3, $t3, 16
+		j step1	
+	step2:
+		blt $t3, 0, step3
+		j done
+	step3:
+		addi $t3, $t3, 16
+	done:   
+		#move the result from $t3 to allocated memory for the result
+		sw $t3, result($zero)
+		
+		#print line
+		li $v0, 4 
+		la $a0, endl
+		syscall
+		
+		#print the result 
+		la $a0, resultPrompt
+		syscall
+		
+		li $v0, 1
+		la $a0, ($t3)
+		syscall
+		
+		#go to next instruction
+		jr $ra
+end:
+	li $v0, 10
+	syscall
+	
+	.data
+	result: .space 4
+	prompt: .asciiz "Welcome to simple arithmetic calculator, this program calculates the following expression: x= (a x (b - c)) % 16"
+	askForA: .asciiz "please enter the a"
+	askForB: .asciiz "please enter the b"
+	askForC: .asciiz "please enter the c"
+	resultPrompt: .asciiz "The result: "
+	endl: .asciiz "\n"
+	

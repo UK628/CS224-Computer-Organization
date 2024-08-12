@@ -1,0 +1,359 @@
+CS224
+Lab 6
+Section 2
+Utku Kurtulmus
+21903025
+27.04.2022
+
+Note: In the copy part I print the copied array just to show that I did it correctly. 
+However, in the test part I comment it and get the results accordingly.
+
+.text
+main:
+
+	la $a0, welcomePrompt
+	li $v0, 4
+	syscall
+	
+	menu:
+		#display menu
+		li $v0, 4
+		la $a0, prompt1
+		syscall
+	
+		la $a0, prompt2
+		syscall
+	
+		la $a0, prompt3
+		syscall
+	
+		la $a0, prompt4
+		syscall
+
+		la $a0, prompt5
+		syscall
+	
+		la $a0, prompt6
+		syscall
+	
+		la $a0, endl
+		syscall
+		
+		#ask the user which operation to execute
+		la $a0 choose
+		syscall
+		
+		li $v0, 5 #the operation value stored in v0
+		syscall
+
+		beq $v0, 6, exit #check if user wants to exit
+		#else continue 
+		move $s0, $v0 #$s0 operation value
+		
+		beq $s0, 1, op1
+		beq $s0, 2, op2 
+		beq $s0, 3, op3 
+		beq $s0, 4, op4 
+		beq $s0, 5, op5
+		j exit 
+		
+	op1:	#opearition 1 
+		la $a0 askN
+		li $v0, 4
+		syscall
+		
+		li $v0, 5 
+		syscall
+		
+		move $a0, $v0 #$a0 = N
+		move $s1, $v0, #$s1 = N
+		
+		jal allocateMatrix
+		move $s2, $v0 #$s2 array beginning adress
+		
+		move $a0, $s2
+		mul $a1, $s1, $s1 
+		jal userDefinedMatrix
+		j menu
+	op2:	#operation 2
+		la $a0 askN
+		li $v0, 4
+		syscall
+		
+		li $v0, 5 
+		syscall
+		
+		move $a0, $v0 #$a0 = N
+		move $s1, $v0, #$s1 = N
+		
+		jal allocateMatrix
+		move $s2, $v0 #$s2 array beginning adress
+		
+		move $a0, $s2
+		mul $a1, $s1, $s1 
+		jal defaultMatrix
+		j menu
+	op3:	#operation 3 
+		la $a0 askI
+		li $v0, 4
+		syscall
+		
+		li $v0, 5 
+		syscall
+		
+		move $a1, $v0
+		
+		la $a0 endl
+		li $v0, 4
+		syscall
+		
+		la $a0 askJ
+		li $v0, 4
+		syscall
+		
+		li $v0, 5 
+		syscall
+		
+		move $a2, $v0
+		
+		la $a0 endl
+		li $v0, 4
+		syscall
+		
+		move $a0, $s2
+		move $a3, $s1
+		
+		jal displayElement
+		j menu
+	op4:	#operation 4 
+		move $a0, $s2
+		move $a1, $s1
+		jal displayMatrix
+		
+		j menu
+		
+	op5:	#operation 5
+		move $a0, $s2
+		move $a1, $s1
+		jal copyMatrix
+		
+		j menu
+#subprograms, (functions)
+
+#$a0 = N(dimension), $v0 = arrayBeginning Adress
+allocateMatrix:	
+	mul $a0, $a0, $a0 #a0 total array size
+	mul $a0, $a0, 4
+	li $v0, 9
+	syscall 
+
+	jr $ra
+
+#$a0 = array beginning adress, $a1 = arraySize, $v0 array beginning adress
+defaultMatrix:	
+	move $v0, $a0
+	li $t0, 1 #$t0 index 
+	
+def:	bgt $t0, $a1, exitDefault
+	sw $t0, 0($a0)
+	addi $a0,$a0,4
+	addi $t0, $t0, 1
+	j def
+	exitDefault:
+	jr $ra
+	
+#$a0 = array beginning adress, $a1 = arraySize, 	
+userDefinedMatrix:
+
+move $t1 , $a0
+
+userDef: beq $a1, $zero, exitUser
+	
+	la $a0 askElement
+	li $v0, 4
+	syscall
+	
+	li $v0, 5 
+	syscall
+	
+	move $t0, $v0
+	
+	la $a0 endl
+	li $v0, 4
+	syscall
+	
+	sw $t0, 0($t1)
+	addi $t1,$t1,4
+	sub $a1, $a1, 1
+	j userDef
+	
+	exitUser:
+	jr $ra
+
+#$a0 = arrayBeginning adress, $a1 = row, $a2 = columns,  $a3 = N,
+displayElement:
+	sub $a1, $a1 , 1
+	sub $a2, $a2 , 1
+	
+	mul $t1, $a1, $a3 # $t1 = (i- 1) * N
+	mul $t1, $t1, 4 #$t1 = 4$t1
+	
+	mul $t2, $a2, 4 #t2 = 4*(j-1)
+	add $t0, $t1, $t2 #$t0 displacement
+	
+	add $a0 , $a0 , $t0 #element address
+	
+	lw $t3, 0($a0) #t3 the element
+	
+	la $a0, dispElement
+	li $v0, 4 
+	syscall
+	
+	li $v0, 1
+	move $a0, $t3
+	syscall
+	
+	la $a0, endl
+	li $v0, 4 
+	syscall
+	
+	jr $ra
+	
+#$a0 array beginning adress, $a1 dimensions N,
+displayMatrix:
+	
+	li $t1, 0 #counter 
+	mul $t0, $a1, $a1 #$t0 = array size
+	move $t3, $a0 #$t3 array beginning adress and array pointer
+	
+disp:	beq $t0, $zero, exitDisplay
+	addi $t1, $t1, 1
+	
+	lw $t2, 0($t3) #get the element
+	
+	move $a0, $t2 #print element
+	li $v0, 1
+	syscall
+	
+	la $a0, space #print space
+	li $v0, 4
+	syscall
+	
+	bne $t1, $a1, else #printline if you finished the row
+	la $a0, endl
+	li $v0, 4
+	syscall
+	li $t1, 0
+	
+	else:
+		addi $t3, $t3 ,4
+		sub $t0, $t0, 1
+		j disp
+	exitDisplay:
+	jr $ra
+
+#$a0 array beginning adress, $a1 N
+copyMatrix:
+	
+	move $t9, $ra
+	
+	move $t0, $a0 #t0, array pointer
+	mul $t2, $a1, $a1 #array size
+	
+	move $a0, $t2
+	mul $a0, $a0, 4
+	li $v0, 9
+	syscall  
+	
+	move $t1, $v0 #t1 copy array pointer
+	move $t8, $t1 
+	
+	#ask user which copy operation gonna be executed
+	li $v0, 4
+	la $a0, rowMajor
+	syscall
+		
+	la $a0, columnMajor
+	syscall
+	
+	la $a0, endl
+	syscall
+		
+	#ask the user which operation to execute
+	la $a0 choose
+	syscall
+		
+	li $v0, 5 #the operation value stored in v0
+	syscall
+	
+	beq $v0, 2, Column
+	
+	
+Row:	#Row Major Copy
+	beq $t2, $zero, dispCopy
+	
+	lw $t3, 0($t0)
+	sw $t3, 0($t1)
+	
+	addi $t0, $t0, 4
+	addi $t1, $t1, 4
+	sub $t2, $t2, 1
+	j Row
+	
+Column:	#Column Major Copy
+	li $t5, 0 #counter
+	mul $t6, $a1, 4 #$t6 = 4*N 
+	move $t7, $t0
+	
+looopp:	beq $t2, $zero, dispCopy
+	addi $t5, $t5, 1
+	
+	lw $t3, 0($t0)
+	sw $t3, 0($t1)
+	
+	bne $t5, $a1, label
+	addi $t7, $t7, 4
+	move $t0, $t7
+	li $t5, 0
+	
+	addi $t1, $t1, 4
+	sub $t2, $t2, 1
+	j looopp
+	
+label: add $t0, $t0, $t6
+	
+	addi $t1, $t1, 4
+	sub $t2, $t2, 1
+	j looopp
+	
+dispCopy: #display copied array
+	li $v0, 4
+	la $a0, copyArray
+	syscall
+
+	move $a0, $t8
+	jal displayMatrix
+	jr $t9
+exit:
+	li $v0,10
+	syscall
+
+.data
+choose: .asciiz "Choose which operation you want to execute \n"
+welcomePrompt: .asciiz "Welcome to the matrix generator! \n"
+prompt1: .asciiz "1. Create square matrix, with given values \n"
+prompt2: .asciiz "2. Create square matrix, with values 1 to n \n"
+prompt3: .asciiz "3. Display desired element \n"
+prompt4: .asciiz "4. Display entire matrix \n"
+prompt5: .asciiz "5. Copy Matrix \n"
+prompt6: .asciiz "6. Exit \n"
+rowMajor: .asciiz "1. Row Major Copy \n"
+columnMajor: .asciiz "2. Column Major Copy \n"
+askN: .asciiz "Please enter the dimension N: "
+askElement: .asciiz "Enter the next element \n"
+askI: .asciiz "Enter i : "
+askJ: .asciiz "Enter j : "
+dispElement: .asciiz "The element: "
+copyArray: .asciiz "The coppy array: \n"
+endl: .asciiz "\n"
+space: .asciiz " "

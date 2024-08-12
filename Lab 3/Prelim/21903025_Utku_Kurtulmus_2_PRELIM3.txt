@@ -1,0 +1,255 @@
+CS224
+Lab 3
+Sec 2
+Utku Kurtulmus
+21903025
+13.03.2022
+
+
+-----------------------PART1----------------------
+	
+	.text
+	.globl main
+main:
+	
+	add $s3, $zero, $zero
+	lw $s3, test
+	ori $s3, $s3, 0
+	
+	j end1
+	
+	end1:
+	li $s2, 0 #boolean variable to check if we did second invoke
+	la $a0, main
+	la $a1, end1
+	begin2:	
+	jal instructionCount
+	end2:
+	
+	move $s0, $v0
+	
+	#print the prompt
+	li $v0, 4
+	la $a0, prompt
+	syscall
+	
+	#print the value
+	li $v0, 1
+	move $a0, $s0
+	syscall  
+	
+	#print line
+	li $v0, 4
+	la $a0, line
+	syscall
+	
+	#check if we did the second invoke
+	beq $s2, 1, exit
+#================Second invoke=====================
+	li $s2,1 #update the bool check variable
+	la $a0, instructionCount
+	la $a1, endAdressForSecondCall
+	j begin2 #we will do the same thing
+		
+	
+	exit:
+		li $v0, 10
+		syscall
+	
+	
+#======================Subprograms==================
+#$a0 starting address, $a1 end address, $v0 total couunt
+#notice that function has only 5 lw and no add inst and no ori inst.
+instructionCount:
+
+	#save s registers
+	addi $sp, $sp, -12
+	sw $s0, 8($sp)
+	sw $s1, 4($sp)
+	sw $s2, 0($sp)
+
+	#save a0 and a1
+	move $s0, $a0
+	move $s1, $a1
+	
+	#prepare v0
+	addi $v0, $zero, 0
+	
+	calculate:
+	
+		#check if we are done
+		bgt $s0, $s1, done
+		
+		#get the next instruction
+		lw $s2, 0($s0)
+		
+		#check if it's ori
+		srl $s2, $s2, 26 # shift the instruction 26 bit right so that now he have only the opcode
+		beq $s2, 13, increment 
+		
+		#check if it's lw
+		beq $s2, 35, increment
+		
+		#check if it's add
+		beq $s2, 0, checkFunc 
+		#if it is not add, ori or lw we can came here and update the pointers and go back to the beginning
+		#update pointers
+		addi $s0,$s0,4
+		j calculate
+			
+		checkFunc:
+			#now we need to check the function code to make sure it's the add instruction
+			#however we lost func code after shifting so we need to load the instruction again
+			lw $s2, 0($s0)
+			#we can first shift left to get rid of the rest of the instruction
+			sll $s2, $s2, 26
+			#now we can shift it right so that we have the correct value for funct
+			srl $s2, $s2, 26
+		
+			#check the funct  
+			beq $s2, 32, increment
+		
+			#if it is not the add function we can came here, update pointers and jump back
+			addi $s0,$s0,4
+			j calculate
+		
+		increment:
+			#increment the count number by 1
+			addi $v0, $v0, 1
+			
+			#update pointer and jump back
+			addi $s0,$s0,4
+			j calculate
+	done:
+		#get back s registers values
+		lw $s2, 0($sp)
+		lw $s1, 4($sp)
+		lw $s0, 8($sp)
+		addi $sp, $sp, 12
+		
+		#go to next instruction
+		jr $ra
+	endAdressForSecondCall:
+
+	.data
+prompt: .asciiz "The total number of ori, lw, add instructions: "
+line: .asciiz "\n"	
+test: .word 4 
+
+
+-----------------------------------------Part2--------------------------------------
+	
+	.text
+	.globl main
+main:
+	#print welcome message
+	li $v0, 4
+	la $a0, welcomePrompt
+	syscall
+	
+	theLoop:
+		#ask the first operand
+		li $v0, 4
+		la $a0, enterFirstOperand
+		syscall
+		
+		li $v0, 5
+		syscall
+		
+		move $a2, $v0 #Since I will need to use $a0 for printing purposes now I will move first operand to a0 later 
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#ask the second operand
+		li $v0, 4
+		la $a0, enterSecondOperand
+		syscall
+		
+		li $v0, 5
+		syscall
+		
+		move $a1, $v0 
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#calculate the division
+		move $a0, $a2
+		jal recursiveDivision
+		
+		#print the result
+		#move the return value $v0 to $s0 since we'll use $v0 for syscalls
+		move $s0, $v0
+		
+		li $v0, 4
+		la $a0, resultPrompt
+		syscall
+		
+		li $v0, 1
+		move $a0, $s0
+		syscall
+		
+		li $v0, 4
+		la $a0, remainder
+		syscall
+		
+		li $v0, 1
+		move $a0, $v1
+		syscall
+		
+		li $v0, 4
+		la $a0, endl
+		syscall
+		
+		#ask if the user wants to continue
+		li $v0, 4
+		la $a0, oneMoreTime
+		syscall
+		
+		li $v0, 5
+		syscall
+		
+		beq $v0, 1, theLoop
+		
+		#exit the program
+		li $v0, 10
+		syscall
+		
+		
+	
+#==================Subprograms==========================
+# $v0 = $a0 / $a1, $v1 remainder
+recursiveDivision:
+	
+	#save return address 
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	
+	#Base Case
+	# if $a0 < $a1 you are done
+	bge $a0, $a1, else
+	move $v1, $a0 #a0 is the remainder in this case
+	addi $v0, $zero, 0 #return 0
+	
+	#restore $sp
+	addi $sp, $sp, 4
+	
+	#go to next instruction
+	jr $ra
+	
+	else:
+		sub $a0, $a0, $a1
+		jal recursiveDivision
+		lw $ra, 0($sp) #you lost the return address after you call the recursive division hence restore it
+		addi $sp, $sp, 4
+		addi $v0, $v0, 1 #1 + recursiveDivision($a0 - $a1, $a1) /actually it's $a0 we updated it at line 102 but just to show it more clearly.
+		jr $ra #go to next inst
+	.data
+welcomePrompt: .asciiz "Welcome to the Recursive Diviser v1.0! \n"
+enterFirstOperand: .asciiz "Please enter the first operand: "
+enterSecondOperand:.asciiz "Please enter the second operand: "
+resultPrompt: .asciiz "The result: "
+remainder: .asciiz ", Remainder = "
+endl: .asciiz "\n"
+oneMoreTime: .asciiz "If you want to continue with another calculation enter 1, else to exit enter 0 \n"
